@@ -4,3 +4,18 @@ target-*/
 *.r1cs
 __pycache__/
 .DS_Store
+
+# white paper build outputs (the committed PDF is Zen-white-paper-draft-0.4.pdf)
+whitepaper/zen-whitepaper.pdf
+whitepaper/*.aux
+whitepaper/*.log
+whitepaper/*.out
+whitepaper/*.toc
+# outputs of the data-minting prototype
+data-minting/data.zen
+data-minting/*.minted.out
+data-minting/deminted.*
+# local Go module proxy built by groth16-wrap/tools
+L2-cryptocurrencies/groth16-wrap/goproxy/
+# proof export written by a benchmark run
+L2-cryptocurrencies/benchmarks/*/bn_out/

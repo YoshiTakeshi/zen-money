@@ -40,12 +40,12 @@ Or use the container (Docker Desktop, arm64): `docker build -t zen .` then `dock
 ```
 cargo test --release
 ```
-About 25 minutes on 2 cores in the sandbox; expect less on an M4. Expected: 137 passed, 0 failed, 2 ignored.
+About 25 minutes on 2 cores in the sandbox; expect less on an M4. Expected: 139 passed, 0 failed, 2 ignored.
 
 ## 5. Real Groth16 stamps (optional, heavy)
 Needs Go 1.26.8 or newer (`brew install go`) and about 6 GB of RAM for setup, 2 GB of disk for the proving key (your 24 GB is enough).
 1. Build the prover as in `../groth16-wrap/README.md` (apply the patch, copy `zenwrap/main.go`, `go build -o zenwrap ./cmd/zenwrap`).
-2. Make the key for the current circuit: the circuit files are in `proof-artifacts/out_v7/`; run `zenwrap compile` and `zenwrap setup` on that folder as in `README.md` (Round 54: about 17 minutes in the sandbox). The proving key is not in the zip (2 GB).
+2. Make the key for the current circuit: the circuit files are in `proof-artifacts/out_v7/`; run `zenwrap compile` and `zenwrap setup` on that folder as in `BUILD-LOG.md` (Round 54: about 17 minutes in the sandbox). The proving key is not in the zip (2 GB).
 3. Run the node with `ZEN_G16=<folder with zen.pk, zen.r1cs, zen.vk> ZEN_WRAP=<path to zenwrap> $Z node serve ...`. Each block then takes minutes to prove; `proof-artifacts/out_v7/zen.vk` alone is enough for a node that only checks stamps. This key is single-party and for testing only.
 Skip this part unless you want to see real stamps; steps 1 to 4 test the rules, wallets, channels, orders and the network.
 

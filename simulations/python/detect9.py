@@ -98,6 +98,6 @@ for name, pat in SCEN:
         out['rows'][name].append({'size': d * 100, 'hours': float(np.median(hrs)), 'named': ok / RUNS * 100})
         print(f'{name:40s} {d*100:4.0f}%  detected after {np.median(hrs):5.1f} h  right components named {ok/RUNS*100:5.1f}%')
 out['sizes'] = [s * 100 for s in SIZES]
-# results are written next to this script, in results/ (the white paper's figs.py reads a copy from whitepaper/data/)
+# results are written next to this script, in results/ (the original wrote them into the white paper's data folder, which is not in the repository)
 RES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results'); os.makedirs(RES, exist_ok=True)
 json.dump(out, open(os.path.join(RES, 'detect9_%g.json' % SC), 'w'))

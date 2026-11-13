@@ -323,13 +323,13 @@ pub fn reservation(
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Terms {
+    /// Coins that whoever holds `key` can claim (by a signature) up to block `timeout`; after that the `owner` takes them back
     Vault {
         key: [u8; 41],
         owner: [F; 4],
         timeout: u64,
         salt: u64,
     },
-    /// `sell` is in the lock's balance (plus `deposit` while reserved); the maker wants `want_amt` base units of `want_chain`, paid to the fresh address `pay_to`
     /// A funded it (its coins are the lock's balance); b starts with nothing and receives by off-chain updates. `oneway`: a stream, only a signs, the state is the amount paid to b
     Channel {
         a: [F; 4],
@@ -350,6 +350,7 @@ pub enum Terms {
         delay: u64,
         salt: u64,
     },
+    /// `sell` is in the lock's balance (plus `deposit` while reserved); the maker wants `want_amt` base units of `want_chain`, paid to the fresh address `pay_to`
     Order {
         maker: [F; 4],
         sell: u64,

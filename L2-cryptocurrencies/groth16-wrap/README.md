@@ -1,4 +1,51 @@
-# Groth16 wrap of the Zen stamp (BN254, gnark v0.16.4)
+# Groth16 wrap: the 196-byte stamp
+
+The last step of the proof pipeline. A Go program (`zenwrap`, built on gnark) verifies the node's final Plonky2 proof **inside** a Groth16 circuit on BN254. What comes out is the *stamp*: 196 bytes, checked by every node in a few milliseconds ([`../node/src/groth16.rs`](../node/src/groth16.rs)).
+
+> **Status:** works, but heavy and not needed to test the network. The test network runs on stand-in stamps. Run this only if you want to see or review real stamps.
+>
+> **The proving key in use comes from a single-party setup.** Whoever ran the setup could forge stamps. A public multi-party ceremony for this exact circuit is required before any real use.
+
+| You need | Amount |
+|---|---|
+| Go | 1.26.8 or newer |
+| Memory | about 6 GB for setup |
+| Disk | about 2 GB for the proving key (not in the repository) |
+| Time on 2 cores | compile and setup about 20 minutes, once; then about 1.5 minutes per proof |
+
+## What is in this folder
+
+| Path | Content |
+|---|---|
+| `zenwrap/main.go` | the program: `compile`, `setup`, `prove`, `verify`, `test`, `gates`, `chal` |
+| `zenwrap/accel_icicle.go`, `accel_none.go` | the optional GPU prover (ICICLE) and its CPU fallback |
+| `gnark-plonky2-verifier-zen.patch` | the patch to succinctlabs/gnark-plonky2-verifier that this needs (port to gnark v0.16.4 and three fixes for Plonky2 1.1 proofs) |
+| `BUILDER-GPU.md`, `bench_gpu.sh` | the block builder's hardware plan and a one-command GPU benchmark (GPU timings not measured yet) |
+| `tools/` | helpers that build a local Go module proxy, for machines that cannot reach proxy.golang.org |
+| `result/`, `result_v2/`, `result_v4/`, `result_v6/` | stored outputs of earlier runs: proofs, public inputs, verifying keys, Solidity verifiers, logs. The node's tests read `result_v2`, `result_v4` and `result_v6` |
+
+## Quick check without building anything here
+
+The node can verify the stored stamps with its own Rust verifier:
+
+```bash
+cd ../node
+RUSTC_BOOTSTRAP=1 cargo test --release groth16::
+```
+
+## How to review
+
+- Is the patched verifier circuit faithful to Plonky2 1.1 (the three fixes listed below)?
+- Are the stamp's public values exactly the block's public values, in the same order, on both sides (`zenwrap/main.go` and `../node/src/groth16.rs`)?
+- The setup: see the warning above.
+
+Not rebuilt during the repository clean-up. The build steps below are the author's.
+
+---
+
+*The text below is the original technical note. `../benchmarks/p2sigopt` is the program that produced the first proofs wrapped here; the node (`../node`) now exports them itself.*
+
+## Groth16 wrap of the Zen stamp (BN254, gnark v0.16.4)
 
 Pipeline (one block = one stamp, fixed shape: 8 leaves x 16 payment slots):
   leaves (payments + Schnorr signatures, custom EcGFp5 gate)  ->  2-to-1 merges  ->  stamp

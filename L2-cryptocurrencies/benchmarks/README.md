@@ -1,4 +1,37 @@
-# Zen merge benchmark (Rust), October 2026
+# Proof-system benchmarks
+
+> **Status:** finished experiments, kept as evidence for the design choices. The node does not depend on these crates. The current pipeline is in [`../node`](../node) and [`../groth16-wrap`](../groth16-wrap).
+
+Six small Rust programs that prove the **same workload** (a block of payments in a depth-32 Merkle tree) with different proof systems, to choose one for Zen. The result: Plonky2 for leaves and merges, with a final Groth16 wrap for a 196-byte block proof.
+
+| Folder | Proof system | Round |
+|---|---|---|
+| [`p2/`](p2) | Plonky2 leaves and recursive merges, no signatures | 1 |
+| [`nova/`](nova) | Nova folding, then a compressed SNARK | 1 |
+| [`g16/`](g16) | Groth16 on BLS12-381 with SnarkPack aggregation | 1 |
+| [`p2sig/`](p2sig) | Plonky2 with Schnorr signatures on EcGFp5 inside the proof | 2 |
+| [`g16sig/`](g16sig) | Groth16 with the same scheme on Jubjub | 2 |
+| [`p2sigopt/`](p2sigopt) | Plonky2 with the custom double-and-add gate; also exports the proof that `groth16-wrap` consumes | 3 to 7 |
+
+## Run one
+
+Needs Rust stable 1.85 or newer. Each folder is its own crate with its own `Cargo.lock`.
+
+```bash
+cd p2sigopt
+RUSTC_BOOTSTRAP=1 cargo build --release       # several minutes on a first build
+./target/release/p2sigopt 4 2                 # 4 payments per leaf, 2 leaves: the smallest useful run
+```
+
+The program prints timings and sizes; lines starting with `RESULT` are the summary. The author's outputs are the `run_*.txt` files in each folder. Larger runs (`16 8`) need several GB of memory and minutes of time; `g16` and `g16sig` are the heaviest.
+
+Not rebuilt during the repository clean-up, except that `cargo fmt` was run on all six.
+
+---
+
+*The text below is the original benchmark report (October 2026). Paths in it are relative to this folder.*
+
+## Zen merge benchmark (Rust), October 2026
 
 Same leaf workload in three proof systems: per payment, sender and receiver updates in a depth-32
 Poseidon Merkle tree (4 paths), a payment digest hash, and range checks on balance and fee rate

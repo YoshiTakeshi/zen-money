@@ -1,0 +1,60 @@
+# Checks that the documented steps keep working.
+#   quick: on every push and pull request (format, build, fast tests, a three-chain smoke test, two simulations)
+#   full:  the whole test suite (about 25 minutes of proving) on pushes to main and on request
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+env:
+  RUSTC_BOOTSTRAP: "1"          # plonky2 uses nightly-only features
+  CARGO_TERM_COLOR: never
+defaults:
+  run:
+    working-directory: L2-cryptocurrencies/node
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: L2-cryptocurrencies/node }
+      - name: Format
+        run: cargo fmt --check
+      - name: Build
+        run: cargo build --release --locked
+      - name: Fast tests
+        run: |
+          cargo test --release --locked -- seal:: store:: transport:: reward:: groth16:: tx:: mempool::
+      - name: Three-chain smoke test (init, serve, mine, pay, balance)
+        run: |
+          Z=target/release/zenproof; W=/tmp/zen-net/wallets
+          $Z net init all /tmp/zen-net
+          $Z node serve-all /tmp/zen-net > /tmp/zen-serve.log 2>&1 &
+          sleep 8
+          for p in 18450 18451 18452; do $Z node mine 127.0.0.1:$p 3; done
+          A=$($Z wallet address $W/w1.key)
+          $Z wallet pay $W/w0.key 127.0.0.1:18442 $A 1000000
+          $Z node mine 127.0.0.1:18452 2
+          $Z wallet balance $W/w1.key 127.0.0.1:18442 | tee /tmp/balance.txt
+          grep -q "balance 10001000000 base units" /tmp/balance.txt
+      - name: Two quick simulations
+        working-directory: .
+        run: |
+          pip install numpy
+          python3 simulations/python/detect_sim.py
+          node simulations/js/tri2.js
+  full:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: L2-cryptocurrencies/node }
+      - name: All tests (expect 139 passed, 2 ignored)
+        run: cargo test --release --locked

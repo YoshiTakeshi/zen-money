@@ -54,7 +54,7 @@ for rate in [0.001, 0.002, 0.005, 0.01, 0.02, 0.029]:
     out['rates'].append(rate * 100); out['n2'].append(d2); out['n3'].append(d3); out['attr3'].append(a3); out['coord_attr'].append(ca)
     print(f'push {rate*100:.1f}%/day: detect 2 chains {d2:.0f} d, 3 chains {d3:.0f} d, attribution {a3*100:.0f}%, coordinated two-chain attack attributed to an attacked chain {ca*100:.0f}%')
 print('threshold (7-day mean) %.2f%%' % (TH * 100))
-# results are written next to this script, in results/ (the white paper's figs.py reads a copy from whitepaper/data/)
+# results are written next to this script, in results/ (the original wrote them into the white paper's data folder, which is not in the repository)
 import os
 RES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results'); os.makedirs(RES, exist_ok=True)
 json.dump(out, open(os.path.join(RES, 'detect.json'), 'w'))

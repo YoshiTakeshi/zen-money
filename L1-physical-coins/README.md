@@ -1,20 +1,50 @@
-# Physical Coins
+# Layer 1: Physical Coins
+
+> **Status:** design study from 2020-2021. The models are design drawings. How to check a coin by hand (weight, size, sound) and how to make coins hard to counterfeit are open research.
+
+## What is in this folder
+
+| Path | Content |
+|---|---|
+| [`SPECS.md`](SPECS.md) | fineness, denominations, weights, fill and shape of every Ren, Ten and Sen coin |
+| [`images/`](images) | renders of the coins and of the "God's Block" packing |
+| [`models/all-coins.stl`](models/all-coins.stl), [`models/all-coins.iges`](models/all-coins.iges) | every coin in one 3D model (STL for printing and viewing, IGES for CAD) |
+| [`models/ten-1.stl`](models/ten-1.stl) | the 1 Ten coin alone |
+| [`models/ren-coins.zip`](models/ren-coins.zip), [`ten-coins.zip`](models/ten-coins.zip), [`sen-coins.zip`](models/sen-coins.zip) | one STL per denomination (nine each: 1/6, 1/2, 1, 2, 6, 12, 60, 120, 360) |
+
+**How to look at the models:** GitHub shows `.stl` files in the browser. On your machine, open them in any slicer or viewer (PrusaSlicer, Cura, MeshLab, Blender, FreeCAD). The zip archives name the fractional coins `1:6` and `1:2`; Windows cannot store a colon in a file name, so unzip them on macOS or Linux, or rename while extracting.
+
+**How to review:** check the numbers in [`SPECS.md`](SPECS.md) (weight = denomination x 4 g, 3 g or 2 g), measure the models' volumes against the stated weights and fills, and tell us whether the shapes are printable in metal. Ideas for verification by hand and against counterfeits are the most useful contribution here.
+
+## Images
+
+| | |
+|---|---|
+| ![Ren](images/ren-3d-model.jpg) Ren (gold) | ![Ten](images/ten-3d-model.jpg) Ten (silver) |
+| ![Sen](images/sen-3d-model.png) Sen (copper) | ![Ten double coin](images/ten-double-coin.jpg) Ten, double coin |
+| ![God's Blocks](images/gods-blocks.png) God's Block | ![All God's Blocks](images/gods-blocks-all.png) all blocks |
+
+---
+
+*The text below is the original design note (2020).*
+
+## Physical Coins
 
 Zen's Physical coins are 3 precious metal coins :
   - Gold coins (REN)
   - Silver coins (TEN)
   - Copper coins (SEN)
 
-## 3D Models
+### 3D Models
 <p align="center">
-  <img src="https://raw.githubusercontent.com/YoshiTakeshi/Zen/master/L1%20-%20Physical%20Coins/3D-Coins-Model.png" width="100%" title="Zen">
+  <img src="images/all-coins-model.png" width="100%" title="Zen">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/YoshiTakeshi/Zen/master/L1%20-%20Physical%20Coins/3D-Overview.png" width="100%" title="Zen">
+  <img src="images/overview.png" width="100%" title="Zen">
 </p>
 
-## Points 
+### Points 
 Zen's physical coins try to solve 2 of the 6 monetary points :
   1) **Mint physical coins**
   2) **Verify physical coins**
@@ -23,7 +53,7 @@ Zen's physical coins try to solve 2 of the 6 monetary points :
   5) Stream physical coins
   6) Geographical Wealth distribution
   
-### Mint physical coins : How to make minting physical coins possible for anyone?
+#### Mint physical coins : How to make minting physical coins possible for anyone?
 To solve the mint problem, we will use **3D Metal Printer**.
 
 Today, with the use of traditional 3D Printers. Any one can print at home any 3D model in any affordable materials like plastic, polycarbonate, polyamide, etc.
@@ -32,7 +62,7 @@ Tomorrow, with the evolution of such technology. Any one can print at home with 
 
 When the 3D Metal Printer will be affordable. Any one can start minting metal coins. Therefore solving the Mint problem.
 
-### Verify physical coins : How to make verifying physical coins easy for anyone?
+#### Verify physical coins : How to make verifying physical coins easy for anyone?
 To solve the verification problem, we will use a infill patern of the 3D printed coin.
 
 Infill paterns, are geometrical paterns used in 3D printer to improve strenght and weight of the model. (exemple : https://www.youtube.com/watch?v=upELI0HmzHc&t=212s).

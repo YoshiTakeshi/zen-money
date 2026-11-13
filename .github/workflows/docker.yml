@@ -1,3 +1,4 @@
+# NOT YET RUN ON GITHUB: moved here from the old zen-rust/ folder, where GitHub never executed it. Check the first run.
 # Builds the Zen image for linux/amd64 and linux/arm64 and publishes it to the GitHub container registry on every tag (v*) and on main.
 # Pull and run:  docker run -d -p 127.0.0.1:18440-18462:18440-18462 -v zen-data:/data ghcr.io/<owner>/zen:latest
 name: image
@@ -20,7 +21,7 @@ jobs:
         with: { images: "ghcr.io/${{ github.repository_owner }}/zen", tags: "type=ref,event=branch\ntype=semver,pattern={{version}}\ntype=raw,value=latest,enable={{is_default_branch}}" }
       - uses: docker/build-push-action@v6
         with:
-          context: zenproof
+          context: L2-cryptocurrencies/node
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

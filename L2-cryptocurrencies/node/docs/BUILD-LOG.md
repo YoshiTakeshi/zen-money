@@ -1,3 +1,11 @@
+# Build log: the design diary of the node, rounds 1 to 56
+
+> **How to read this file.** It is the author's working diary, kept as written: each round says what was built, why, and what was measured. It is long and it is not a tutorial; for running the node see [`../README.md`](../README.md). Search it for a topic (`Round 44`, "watchtower", "maturity") when you want the reason behind a design choice.
+>
+> **Order.** The file starts with the current status, then the hardware decision, then Round 11, the minting port, proof versions 3 and 2 (newest first), and from "Round 12" onward it runs forward in time to Round 56. Rounds 1 to 8 (the benchmarks) are in [`../../benchmarks/README.md`](../../benchmarks/README.md).
+>
+> **Paths.** They are written relative to the node folder (`L2-cryptocurrencies/node`). Folder names were updated to the current layout: `logs/run_*.txt`, `proof-artifacts/out_v*`, `../groth16-wrap`. Measurements are from the author's 2-core build machine unless a round says otherwise.
+
 # Status (round 55)
 Every operation is proved: four leaf circuits (vault, channel, order incl. claim, factory), universal merge, shrink, BN254 layer, Groth16. Current verifying key: `proof-artifacts/out_v7/zen.vk` (older keys, e.g. `proof-artifacts/out_v6`, do not accept current blocks). Soundness battery: `src/soundness.rs`. Plan and open items: `PROOFS-PLAN.md`; security notes: `SECURITY-REVIEW.md`. Not for real value yet: single-party Groth16 setup, foreign payment proof checked by nodes only.
 
