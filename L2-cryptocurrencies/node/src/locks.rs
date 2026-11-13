@@ -33,23 +33,29 @@ use std::collections::HashMap;
 /// a hash input being built; the first element is a domain tag so no two kinds of data can collide
 pub struct Fw(pub Vec<F>);
 impl Fw {
+    /// start a Poseidon input with an 8-byte domain tag (as one field element), so messages of different kinds can never collide
     pub fn new(tag: &[u8; 8]) -> Fw {
         Fw(vec![F::from_canonical_u64(u64::from_le_bytes(*tag))])
     }
+    /// append a byte as one field element
     pub fn u8(&mut self, x: u8) -> &mut Fw {
         self.0.push(F::from_canonical_u8(x));
         self
     }
+    /// append a u32 as one field element
     pub fn u32(&mut self, x: u32) -> &mut Fw {
         self.0.push(F::from_canonical_u32(x));
         self
     }
+    /// append a u64 as two field elements (low 32 bits, then high 32 bits), so every element stays far below the field order
     pub fn u64(&mut self, x: u64) -> &mut Fw {
         self.u32(x as u32).u32((x >> 32) as u32)
     }
+    /// append a u128 as four 32-bit field elements, low first
     pub fn u128(&mut self, x: u128) -> &mut Fw {
         self.u64(x as u64).u64((x >> 64) as u64)
     }
+    /// append an address (already four field elements)
     pub fn addr(&mut self, a: &[F; 4]) -> &mut Fw {
         self.0.extend_from_slice(a);
         self
@@ -63,13 +69,16 @@ impl Fw {
         }
         self
     }
+    /// append a 41-byte encoded public key (through `bytes`)
     pub fn point(&mut self, k: &[u8; 41]) -> &mut Fw {
         self.bytes(k)
     }
+    /// append `n` zero elements (padding to the fixed layout the circuit expects)
     pub fn zeros(&mut self, n: usize) -> &mut Fw {
         self.0.extend(std::iter::repeat(F::ZERO).take(n));
         self
     }
+    /// the Poseidon hash of everything written so far
     pub fn hash(&self) -> [F; 4] {
         PoseidonHash::hash_no_pad(&self.0).elements
     }
@@ -80,6 +89,7 @@ pub fn id_felts(id: &[u8; 32]) -> [F; 4] {
         F::from_noncanonical_u64(u64::from_le_bytes(id[8 * i..8 * i + 8].try_into().unwrap()))
     })
 }
+/// a four-element hash as a 32-byte id
 fn id_of(h: [F; 4]) -> [u8; 32] {
     addr_bytes(&h)
 }
@@ -100,6 +110,7 @@ pub fn confirmations(chain: u8) -> u64 {
 #[derive(Debug)]
 pub struct Unavailable(pub String);
 impl std::fmt::Display for Unavailable {
+    /// shown as "not yet: <reason>": the operation is valid but too early (the pool keeps it; a block containing it is invalid)
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "not yet: {}", self.0)
     }
@@ -110,6 +121,7 @@ impl std::error::Error for Unavailable {}
 pub trait CrossHeaders: Send + Sync {
     /// the hash and time of the header at `height` of that chain's best chain, as checked by this node
     fn header(&self, chain: u8, height: u64) -> Option<([u8; 32], u32)>;
+    /// the best known height of another chain, if this node follows it
     fn tip_height(&self, chain: u8) -> Option<u64>;
 }
 #[derive(Clone)]
@@ -201,12 +213,14 @@ pub const MAX_PLOCKS: usize = 8;
 /// the longest terms an operation or a snapshot may carry
 pub const MAX_TERMS: usize = 8192;
 impl PLock {
+    /// byte form of a point lock (amount, direction, point, expiry)
     pub fn encode(&self, w: &mut Wr) {
         w.u64(self.amt);
         w.u8(self.to_b as u8);
         w.raw(&self.point);
         w.u64(self.expiry);
     }
+    /// parse a point lock; the direction byte must be 0 or 1
     pub fn decode(r: &mut Rd) -> Result<PLock> {
         Ok(PLock {
             amt: r.u64()?,
@@ -232,6 +246,7 @@ impl PLock {
 impl PLock {
     /// 16 elements: amount (2), side (1), point (11), expiry (2)
     pub const FELTS: usize = 16;
+    /// the point lock's fields in the fixed order that is hashed and signed
     pub fn felts(&self, f: &mut Fw) {
         f.u64(self.amt)
             .u8(self.to_b as u8)
@@ -253,6 +268,7 @@ pub fn plocks_digest(l: &[PLock]) -> [F; 4] {
     }
     f.hash()
 }
+/// the sum locked in a list of point locks (u128, so it cannot overflow)
 pub fn plocks_total(l: &[PLock]) -> u128 {
     l.iter().map(|x| x.amt as u128).sum()
 }
@@ -347,16 +363,20 @@ pub enum Terms {
         state: OrderState,
     },
 }
+/// an address as four integers, for use as a map key
 fn akey(a: &[F; 4]) -> [u64; 4] {
     a.map(|x| x.to_canonical_u64())
 }
+/// append an address as 32 bytes
 fn put_addr(w: &mut Wr, a: &[F; 4]) {
     w.raw(&addr_bytes(a));
 }
+/// read a 32-byte address (canonical words only)
 fn get_addr(r: &mut Rd) -> Result<[F; 4]> {
     addr_from(&r.take(32)?.try_into()?)
 }
 impl Terms {
+    /// byte form of a lock's terms: a kind byte (1 = vault, ...) then the kind's fields. Stored in blocks and snapshots.
     pub fn encode(&self) -> Vec<u8> {
         let mut w = Wr::new();
         match self {
@@ -509,6 +529,7 @@ impl Terms {
         }
         w.0
     }
+    /// parse terms from untrusted bytes; an unknown kind byte or out-of-range field is an error. REVIEW: a fuzzing target.
     pub fn decode_from(r: &mut Rd) -> Result<Terms> {
         Ok(match r.u8()? {
             1 => Terms::Vault {
@@ -774,6 +795,7 @@ impl Terms {
             }
         }
     }
+    /// the terms' salt (lets two locks with otherwise equal terms have different addresses)
     pub fn salt(&self) -> u64 {
         match self {
             Terms::Vault { salt, .. }
@@ -782,6 +804,7 @@ impl Terms {
             | Terms::Factory { salt, .. } => *salt,
         }
     }
+    /// change the salt
     pub fn set_salt(&mut self, s: u64) {
         match self {
             Terms::Vault { salt, .. }
@@ -821,6 +844,7 @@ impl Terms {
         }
         Some(id_of(f.hash()))
     }
+    /// the stable id of a channel (None for other kinds of terms): it stays the same while the channel's state, and so its address, changes
     pub fn channel_id(&self) -> Option<[u8; 32]> {
         let Terms::Channel {
             a,
@@ -1025,6 +1049,7 @@ pub enum Op {
         amt: u64,
     },
 }
+/// byte form of a payout destination: a tree index, plus the address when the account is to be created
 fn put_dest(w: &mut Wr, d: &Dest) {
     w.u32(d.idx);
     match &d.new {
@@ -1035,6 +1060,7 @@ fn put_dest(w: &mut Wr, d: &Dest) {
         None => w.u8(0),
     }
 }
+/// parse a payout destination
 fn get_dest(r: &mut Rd) -> Result<Dest> {
     let idx = r.u32()?;
     Ok(Dest {
@@ -1047,6 +1073,7 @@ fn get_dest(r: &mut Rd) -> Result<Dest> {
     })
 }
 impl Op {
+    /// the tree index of the account that pays for and signs this operation
     pub fn from(&self) -> u32 {
         match self {
             Op::Make { from, .. }
@@ -1092,6 +1119,7 @@ impl Op {
             | Op::ChanFund { lock, .. } => Some(*lock),
         }
     }
+    /// the fee the sender pays for this operation
     pub fn fee(&self) -> u64 {
         match self {
             Op::Make { fee, .. }
@@ -1114,6 +1142,7 @@ impl Op {
             | Op::ChanFund { fee, .. } => *fee,
         }
     }
+    /// byte form of an operation as it appears in block data (indices, not addresses)
     fn encode(&self, w: &mut Wr) {
         match self {
             Op::Make {
@@ -1383,6 +1412,7 @@ impl Op {
             }
         }
     }
+    /// parse one operation from block data: kind, sender index, fee, then the kind's fields. REVIEW: a fuzzing target.
     fn decode(r: &mut Rd) -> Result<Op> {
         let kind = r.u8()?;
         let (from, fee) = (r.u32()?, r.u64()?);
@@ -1554,6 +1584,7 @@ pub fn encode_ops(ops: &[Op]) -> Vec<u8> {
     }
     w.0
 }
+/// parse the operations section of a block (empty input = no operations)
 pub fn decode_ops(b: &[u8]) -> Result<Vec<Op>> {
     if b.is_empty() {
         return Ok(vec![]);
@@ -1699,6 +1730,7 @@ pub enum OpReq {
     },
 }
 impl OpReq {
+    /// the sender's address
     pub fn from(&self) -> [F; 4] {
         match self {
             OpReq::Make { from, .. }
@@ -1721,6 +1753,7 @@ impl OpReq {
             | OpReq::ChanFund { from, .. } => *from,
         }
     }
+    /// the fee offered
     pub fn fee(&self) -> u64 {
         match self {
             OpReq::Make { fee, .. }
@@ -1743,6 +1776,7 @@ impl OpReq {
             | OpReq::ChanFund { fee, .. } => *fee,
         }
     }
+    /// the address of the lock this request acts on (None for Make, which creates one)
     pub fn lock(&self) -> Option<[F; 4]> {
         match self {
             OpReq::Make { .. } => None,
@@ -1963,6 +1997,7 @@ impl OpReq {
             }
         }
     }
+    /// byte form of a request as wallets send it (addresses, not tree indices; the node resolves them)
     pub fn encode(&self) -> Vec<u8> {
         let mut w = Wr::new();
         let head = |w: &mut Wr, k: u8, from: &[F; 4], fee: u64| {
@@ -2169,6 +2204,7 @@ impl OpReq {
         }
         w.0
     }
+    /// parse a request from untrusted bytes. REVIEW: a fuzzing target; reached from the API and from peers.
     pub fn decode(b: &[u8]) -> Result<OpReq> {
         let mut r = Rd::new(b);
         let kind = r.u8()?;
@@ -2330,12 +2366,15 @@ pub struct SignedOp {
 }
 pub const MAX_SIGNED_OP: usize = MAX_PROOF + MAX_TERMS;
 impl SignedOp {
+    /// what the sender signs: Poseidon over the tag "ZenOp...", the chain id, the sender's nonce and every field of the request.
+    /// The chain id stops replay on another chain, the nonce stops replay on this one.
     pub fn message(chain: u8, nonce: u64, req: &OpReq) -> [F; 4] {
         let mut f = Fw::new(b"ZenOp...");
         f.u8(chain).u64(nonce);
         req.fields(&mut f);
         f.hash()
     }
+    /// sign a request with `key` at this nonce
     pub fn sign(key: &crate::mint::Key, chain: u8, nonce: u64, req: OpReq) -> SignedOp {
         let (e, s) = crate::mint::sign(key, SignedOp::message(chain, nonce, &req));
         SignedOp {
@@ -2346,6 +2385,7 @@ impl SignedOp {
             s: crate::mint::s_bytes(&s),
         }
     }
+    /// wire form: public key | nonce | signature | request bytes
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut w = Wr::new();
         w.raw(&self.from_a);
@@ -2357,6 +2397,7 @@ impl SignedOp {
         w.raw(&self.s);
         w.0
     }
+    /// parse a signed operation (at most MAX_SIGNED_OP bytes). The signature is checked by `OpPool::admit` and again when a block is replayed.
     pub fn from_bytes(b: &[u8]) -> Result<SignedOp> {
         if b.len() > MAX_SIGNED_OP {
             bail!("operation too large");
@@ -2376,6 +2417,7 @@ impl SignedOp {
             s,
         })
     }
+    /// the operation id: SHA-256 of "Zen-opid-v1" and the wire bytes
     pub fn id(&self) -> [u8; 32] {
         let mut h = Sha256::new();
         h.update(b"Zen-opid-v1");
@@ -2409,9 +2451,11 @@ pub struct OpPool {
 pub const MAX_OPS_PER_SENDER: usize = 4;
 const MAX_AGE: u64 = 400;
 impl OpPool {
+    /// an empty operation pool of at most `max` entries
     pub fn new(max: usize) -> OpPool {
         OpPool { ops: vec![], max }
     }
+    /// number of waiting operations
     pub fn len(&self) -> usize {
         self.ops.len()
     }
@@ -2422,6 +2466,7 @@ impl OpPool {
             .find(|(o, ..)| o.nonce == nonce && o.req.from() == *from)
             .map(|(o, ..)| o.clone())
     }
+    /// how many operations of this sender are already waiting (there is a per-sender limit)
     fn waiting(&self, from: &[F; 4]) -> u64 {
         self.ops
             .iter()
@@ -2432,6 +2477,8 @@ impl OpPool {
     pub fn next_nonce(&self, chain: &crate::node::Chain, from: &[F; 4]) -> Option<u64> {
         Some(chain.account(from)?.1.nonce + self.waiting(from))
     }
+    /// admission checks for an operation from a wallet or a peer: not known, pool not full, per-sender limit, signature, nonce, fee floor,
+    /// and a dry run of the rule against the current tip
     pub fn admit(&mut self, chain: &crate::node::Chain, op: SignedOp) -> Result<()> {
         let id = op.id();
         if self.ops.iter().any(|(_, i, _)| *i == id) {
@@ -2569,6 +2616,7 @@ pub fn chan_close_msg(chain: u8, id: &[u8; 32], bal_a: u64, cap: u64) -> [F; 4] 
     f.u8(chain).addr(&id_felts(id)).u64(bal_a).u64(cap);
     f.hash()
 }
+/// true when `key` decodes to a valid point and (e, s) is its signature on `msg`; any decoding failure counts as a bad signature
 fn sig_ok(key: &[u8; 41], msg: [F; 4], e: u128, s: &[u8; 40]) -> bool {
     crate::mint::decode_point(key).map_or(false, |a| {
         crate::mint::verify(a, msg, e, &num_bigint::BigUint::from_bytes_le(s))
@@ -2596,12 +2644,14 @@ pub fn wits_digest(v: &[Option<[u8; 40]>]) -> [F; 4] {
     }
     f.hash()
 }
+/// a list of point locks with a one-byte count
 fn put_plocks(w: &mut Wr, l: &[PLock]) {
     w.u8(l.len() as u8);
     for x in l {
         x.encode(w);
     }
 }
+/// read a list of point locks; more than MAX_PLOCKS is refused
 fn get_plocks(r: &mut Rd) -> Result<Vec<PLock>> {
     let n = r.u8()? as usize;
     if n > MAX_PLOCKS {
@@ -2609,6 +2659,7 @@ fn get_plocks(r: &mut Rd) -> Result<Vec<PLock>> {
     }
     (0..n).map(|_| PLock::decode(r)).collect()
 }
+/// a list of optional 40-byte witnesses (the secrets that open point locks) with a one-byte count
 fn put_wits(w: &mut Wr, v: &[Option<[u8; 40]>]) {
     w.u8(v.len() as u8);
     for x in v {
@@ -2621,6 +2672,7 @@ fn put_wits(w: &mut Wr, v: &[Option<[u8; 40]>]) {
         }
     }
 }
+/// read a list of optional witnesses; more than MAX_PLOCKS is refused
 fn get_wits(r: &mut Rd) -> Result<Vec<Option<[u8; 40]>>> {
     let n = r.u8()? as usize;
     if n > MAX_PLOCKS {
@@ -2636,12 +2688,14 @@ fn get_wits(r: &mut Rd) -> Result<Vec<Option<[u8; 40]>>> {
         })
         .collect()
 }
+/// both parties' signatures on a channel state
 fn put_sigs(w: &mut Wr, g: &ChanSigs) {
     w.u128(g.ea);
     w.raw(&g.sa);
     w.u128(g.eb);
     w.raw(&g.sb);
 }
+/// read both parties' signatures
 fn get_sigs(r: &mut Rd) -> Result<ChanSigs> {
     Ok(ChanSigs {
         ea: r.u128()?,
@@ -2658,6 +2712,7 @@ pub fn sub_id(fid: &[u8; 32], idx: u8) -> [u8; 32] {
     f.addr(&id_felts(fid)).u8(idx);
     id_of(f.hash())
 }
+/// what a factory member and the coordinator sign for one member's channel state (chain id, factory id and member index are in the message)
 pub fn fact_state_msg(
     chain: u8,
     fid: &[u8; 32],
@@ -2677,6 +2732,7 @@ pub fn fact_state_msg(
         .addr(&plocks_digest(locks));
     f.hash()
 }
+/// what is signed to close one member's channel in a factory: chain, factory id, member index, the coordinator's balance and the member's cap
 pub fn fact_close_msg(chain: u8, fid: &[u8; 32], idx: u8, bal_c: u64, cap: u64) -> [F; 4] {
     let mut f = Fw::new(b"ZenFClo.");
     f.u8(chain).addr(&id_felts(fid)).u8(idx).u64(bal_c).u64(cap);
@@ -2724,6 +2780,7 @@ struct Run<'a, 'b> {
     rec: Vec<Touch>,
 }
 impl Run<'_, '_> {
+    /// write an account leaf and record the touch (old value and Merkle path) for the prover
     fn set(&mut self, i: u64, a: Acct) {
         let (old, sibs) = (self.state.get(&i).copied(), self.tree.path(i));
         self.state.insert(i, a);
@@ -2735,6 +2792,7 @@ impl Run<'_, '_> {
             sibs,
         });
     }
+    /// empty an account leaf and record the touch
     fn remove(&mut self, i: u64) {
         let (old, sibs) = (self.state.get(&i).copied(), self.tree.path(i));
         self.state.remove(&i);
@@ -2746,6 +2804,7 @@ impl Run<'_, '_> {
             sibs,
         });
     }
+    /// the terms of the lock stored at tree index `i`, or an error if there is none
     fn lock(&self, i: u32) -> Result<Terms> {
         self.locks
             .get(&(i as u64))
@@ -2794,6 +2853,7 @@ impl Run<'_, '_> {
         });
         Ok(())
     }
+    /// remove a lock entirely: its leaf and its terms
     fn spend(&mut self, i: u32) {
         self.remove(i as u64);
         self.locks.remove(&(i as u64));
@@ -2807,6 +2867,8 @@ impl Run<'_, '_> {
         );
         self.locks.insert(i as u64, terms);
     }
+    /// THE RULES. Apply one operation to the state or refuse it: fee floor and balance first, then one arm per kind of operation.
+    /// This function is the specification the circuits are tested against (`soundness.rs`); money conservation is checked here.
     fn one(&mut self, op: &Op) -> Result<()> {
         let (d, p) = blockdata::day_period(self.height);
         let (fi, fee) = (op.from() as u64, op.fee());
@@ -4186,6 +4248,7 @@ pub fn proved_data_hash(op: &Op, ntime: u32) -> Option<[F; 4]> {
 pub fn provable(op: &Op) -> bool {
     leaf_kind(op).is_some()
 }
+/// whether the block proof can carry this request: since round 53 every kind is provable, so always true
 pub fn provable_req(_r: &OpReq) -> bool {
     true
 }
@@ -4269,6 +4332,7 @@ pub struct PaymentProof {
     pub leaf: Option<(u64, Vec<u64>, [u64; 7], Vec<[u64; 4]>)>,
 }
 impl PaymentProof {
+    /// byte form of the proof that a payment happened on another chain (header, block parts and the payment's place in the block data)
     pub fn encode(&self) -> Vec<u8> {
         let mut w = Wr::new();
         w.u8(self.chain);
@@ -4307,6 +4371,7 @@ impl PaymentProof {
         }
         w.0
     }
+    /// parse a foreign payment proof from untrusted bytes
     pub fn decode(b: &[u8]) -> Result<PaymentProof> {
         let mut r = Rd::new(b);
         let (chain, height) = (r.u8()?, r.u64()?);

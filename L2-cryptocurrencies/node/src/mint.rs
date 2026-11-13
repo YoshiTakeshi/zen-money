@@ -49,6 +49,7 @@ impl Key {
         o[..d.len()].copy_from_slice(&d);
         o
     }
+    /// the key pair of a secret scalar: public point a = k*G and address = Poseidon hash of the public point
     pub fn from_secret(k: BigUint) -> Self {
         let a = ec::mul_g(&ec::params(), &k);
         Key {
@@ -74,6 +75,7 @@ fn ext_sign(y: E) -> u8 {
         .find(|c| *c != 0)
         .map_or(0, |c| (c & 1) as u8)
 }
+/// a point in 41 bytes: the five field elements of x (canonical, little-endian) and one byte for the sign of y (see `decode_point` for the checks on the way back)
 pub fn encode_point(p: P) -> [u8; 41] {
     let mut o = [0u8; 41];
     for i in 0..5 {
@@ -125,11 +127,13 @@ pub fn blow_msg(chain: u64, prev: &[u8; 32], nonce: u64) -> [F; 4] {
     v.push(F::from_canonical_u32((nonce >> 32) as u32));
     PoseidonHash::hash_no_pad(&v).elements
 }
+/// a four-element message as 32 bytes (canonical values, little-endian)
 fn msg_bytes(m: &[F; 4]) -> Vec<u8> {
     m.iter()
         .flat_map(|x| x.to_canonical_u64().to_le_bytes())
         .collect()
 }
+/// the scalar s as 40 little-endian bytes, zero-padded (s < n < 2^319 fits)
 pub fn s_bytes(s: &BigUint) -> [u8; 40] {
     let mut o = [0u8; 40];
     let b = s.to_bytes_le();
@@ -184,6 +188,7 @@ pub fn make_ticket(key: &Key, chain: u64, prev: &[u8; 32], nonce: u64) -> Ticket
     }
 }
 impl Ticket {
+    /// the ticket's 105 bytes: public key 41 | nonce 8 | e 16 | s 40
     pub fn to_bytes(&self) -> [u8; TICKET_BYTES] {
         let mut o = [0u8; TICKET_BYTES];
         o[..41].copy_from_slice(&self.a);
@@ -192,6 +197,7 @@ impl Ticket {
         o[65..].copy_from_slice(&self.s);
         o
     }
+    /// split 105 bytes into the ticket's fields. Only the length is checked here; the key, the signature and the work are checked by the ticket's verify step.
     pub fn from_bytes(b: &[u8]) -> Result<Self> {
         if b.len() != TICKET_BYTES {
             bail!("ticket length");
@@ -217,6 +223,7 @@ pub fn blow_value(prev: &[u8; 32], t: &Ticket) -> [u8; 32] {
     a2.hash_password_into(&input, &salt, &mut out).unwrap();
     out
 }
+/// true when the Argon2id output, read as a big-endian number, is below 2^256 / difficulty (difficulty 0 is treated as 1)
 pub fn wins(v: &[u8; 32], difficulty: u64) -> bool {
     let target = (BigUint::from(1u32) << 256u32) / BigUint::from(difficulty.max(1));
     BigUint::from_bytes_be(v) < target
@@ -263,6 +270,7 @@ pub fn retarget(diff: u64, blows: u64) -> u64 {
 pub fn min_work(work_ema: u64, diff: u64) -> u64 {
     (work_ema / 3).max(diff)
 }
+/// moving average of the work per block: moves 1/32 of the way toward the newest value (integer arithmetic, so every node gets the same number)
 pub fn next_work_ema(ema: u64, work: u64) -> u64 {
     (ema as i128 + (work as i128 - ema as i128) / 32) as u64
 }

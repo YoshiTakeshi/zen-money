@@ -51,6 +51,7 @@ pub const POOL_DIV: u64 = 32;
 pub const BPD: u64 = 576; // blocks per day (Jen: 150 s)
 pub const REST_DAYS: u64 = 3;
 pub const AGE_CAP_DAYS: u64 = 30;
+/// the day number of a block height (BPD blocks per day) and its rest period (REST_DAYS days per period)
 pub fn day_period(height: u64) -> (u64, u64) {
     let d = height / BPD;
     (d, d / REST_DAYS)
@@ -61,6 +62,8 @@ pub struct Counted {
     pub amt: u64,
     pub age: u64,
 }
+/// bring an account's "each gram counts once" fields up to day `d`, period `p`: money that has rested long enough becomes rested, and the
+/// counter of rested money already used is cleared when a new period starts. The circuit mirrors this function (`settle_t`).
 pub fn settle(a: &mut Acct, d: u64, p: u64) {
     if a.bal > a.rest && d >= a.fd + REST_DAYS {
         a.rest = a.bal;
@@ -166,6 +169,7 @@ pub fn expected_credits(
     (out, rule.pool_before - pay + to_pool)
 }
 
+/// append an unsigned LEB128 varint (7 bits per byte, low bits first)
 fn put_var(v: &mut Vec<u8>, mut x: u64) {
     loop {
         let b = (x & 0x7f) as u8;
@@ -177,6 +181,8 @@ fn put_var(v: &mut Vec<u8>, mut x: u64) {
         v.push(b | 0x80);
     }
 }
+/// read a varint. Refuses one that is truncated, does not fit in 64 bits, or is padded with a zero top byte (non-minimal),
+/// so a number has exactly one encoding.
 fn get_var(b: &[u8], pos: &mut usize) -> Result<u64> {
     let (mut x, mut sh) = (0u64, 0u32);
     loop {
@@ -195,16 +201,19 @@ fn get_var(b: &[u8], pos: &mut usize) -> Result<u64> {
         sh += 7;
     }
 }
+/// read exactly N bytes at `pos` or fail with "truncated"
 fn get<const N: usize>(b: &[u8], pos: &mut usize) -> Result<[u8; N]> {
     let s = b.get(*pos..*pos + N).ok_or_else(|| anyhow!("truncated"))?;
     *pos += N;
     Ok(s.try_into().unwrap())
 }
+/// append an address as four little-endian u64
 fn put_addr(v: &mut Vec<u8>, a: &[F; 4]) {
     for x in a {
         v.extend(x.to_canonical_u64().to_le_bytes());
     }
 }
+/// read an address; a word at or above the field order is refused (one encoding per address)
 fn get_addr(b: &[u8], pos: &mut usize) -> Result<[F; 4]> {
     let mut a = [F::ZERO; 4];
     for x in a.iter_mut() {
@@ -217,6 +226,7 @@ fn get_addr(b: &[u8], pos: &mut usize) -> Result<[F; 4]> {
     Ok(a)
 }
 
+/// serialise a block's leaves (payments, credits, new accounts, masks) into block data, version 4
 pub fn encode(slots: usize, block: &[LeafData]) -> Vec<u8> {
     let mut v = vec![VERSION];
     v.extend((slots as u16).to_le_bytes());
@@ -259,6 +269,7 @@ pub fn encode(slots: usize, block: &[LeafData]) -> Vec<u8> {
     v
 }
 
+/// parse block data and require that every byte was used
 pub fn decode(b: &[u8]) -> Result<(usize, Vec<LeafData>)> {
     let (slots, block, used) = decode_prefix(b)?;
     if used != b.len() {

@@ -17,6 +17,8 @@ pub(crate) struct Head {
     pub s_t: Target,
     pub day: [Target; 4],
 }
+/// the values every operation leaf starts from: the root before, the height (32 bits) and S (62 bits), plus the split of the height into
+/// day, block-of-day, rest period and day-of-period. The split is constrained (height = BPD * day + rem with rem < BPD; day = REST_DAYS * period + q).
 pub(crate) fn head(b: &mut CircuitBuilder<F, D>) -> Head {
     let root0 = b.add_virtual_hash();
     let h_t = b.add_virtual_target();
@@ -49,6 +51,7 @@ pub(crate) fn head(b: &mut CircuitBuilder<F, D>) -> Head {
         day,
     }
 }
+/// fill the `head` targets for a block at `height` with unit `s` and starting root `root0`
 pub(crate) fn set_head(
     pw: &mut PartialWitness<F>,
     hd: &Head,
@@ -83,10 +86,13 @@ pub(crate) struct SndT {
 }
 /// the sender pays `give` and the fee: returns the sender's touch and the root after it
 impl SndT {
+    /// the sender's nonce target (the leaf hashes it into the signed message)
     pub fn nonce_t(&self) -> Target {
         self.nonce
     }
 }
+/// the sender's account touch: Merkle path of the old leaf, fee floor (fee >= S/100), balance covers fee + give, nonce + 1, and the
+/// "each gram counts once" bookkeeping. Returns the sender's targets and the root after the sender's leaf is replaced.
 pub(crate) fn sender(
     b: &mut CircuitBuilder<F, D>,
     hd: &Head,
@@ -155,6 +161,7 @@ pub(crate) fn sender(
         cur1,
     )
 }
+/// fill the sender's targets from the node's replay record (`Touch`): old account and Merkle path. Errors if the sender has no account.
 pub(crate) fn set_sender(
     pw: &mut PartialWitness<F>,
     s: &SndT,
@@ -173,6 +180,7 @@ pub(crate) struct LockT {
     pub bits: Vec<BoolTarget>,
     pub sib: Vec<HashOutTarget>,
 }
+/// targets for the lock's own slot in the account tree: balance, nonce, peg fields, and a 32-level Merkle path (path bits are boolean-constrained)
 pub(crate) fn add_lock(b: &mut CircuitBuilder<F, D>) -> LockT {
     LockT {
         bal: b.add_virtual_target(),
@@ -184,6 +192,7 @@ pub(crate) fn add_lock(b: &mut CircuitBuilder<F, D>) -> LockT {
         sib: (0..DEPTH).map(|_| b.add_virtual_hash()).collect(),
     }
 }
+/// fill the lock's targets from the replay record; a lock that does not exist yet is an all-zero leaf
 pub(crate) fn set_lock(
     pw: &mut PartialWitness<F>,
     l: &LockT,

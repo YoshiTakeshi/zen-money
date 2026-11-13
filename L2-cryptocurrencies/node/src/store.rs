@@ -13,6 +13,7 @@ use std::sync::Mutex;
 const MAGIC: &[u8; 8] = b"ZENLOG01";
 const MAX_RECORD: u32 = 64 << 20;
 
+/// CRC-32 (IEEE 802.3, reflected, polynomial 0xEDB88320), table built on each call. It detects torn or damaged records; it is not a security check.
 pub fn crc32(data: &[u8]) -> u32 {
     let mut table = [0u32; 256];
     for i in 0..256u32 {
@@ -36,21 +37,27 @@ pub fn crc32(data: &[u8]) -> u32 {
 /// little-endian writer / bounds-checked reader for the snapshot files
 pub struct Wr(pub Vec<u8>);
 impl Wr {
+    /// an empty buffer
     pub fn new() -> Wr {
         Wr(vec![])
     }
+    /// append one byte
     pub fn u8(&mut self, x: u8) {
         self.0.push(x);
     }
+    /// append a u32, little-endian
     pub fn u32(&mut self, x: u32) {
         self.0.extend_from_slice(&x.to_le_bytes());
     }
+    /// append a u64, little-endian
     pub fn u64(&mut self, x: u64) {
         self.0.extend_from_slice(&x.to_le_bytes());
     }
+    /// append a u128, little-endian
     pub fn u128(&mut self, x: u128) {
         self.0.extend_from_slice(&x.to_le_bytes());
     }
+    /// append bytes as they are (the caller writes a length first when the size is not fixed)
     pub fn raw(&mut self, x: &[u8]) {
         self.0.extend_from_slice(x);
     }
@@ -60,9 +67,11 @@ pub struct Rd<'a> {
     p: usize,
 }
 impl<'a> Rd<'a> {
+    /// start reading `b` from its first byte
     pub fn new(b: &'a [u8]) -> Rd<'a> {
         Rd { b, p: 0 }
     }
+    /// the next `n` bytes, or an error when fewer are left (checked addition: a huge `n` cannot wrap). Every other reader goes through this.
     pub fn take(&mut self, n: usize) -> Result<&'a [u8]> {
         let end = self
             .p
@@ -73,15 +82,19 @@ impl<'a> Rd<'a> {
         self.p = end;
         Ok(r)
     }
+    /// read one byte
     pub fn u8(&mut self) -> Result<u8> {
         Ok(self.take(1)?[0])
     }
+    /// read a little-endian u32
     pub fn u32(&mut self) -> Result<u32> {
         Ok(u32::from_le_bytes(self.take(4)?.try_into()?))
     }
+    /// read a little-endian u64
     pub fn u64(&mut self) -> Result<u64> {
         Ok(u64::from_le_bytes(self.take(8)?.try_into()?))
     }
+    /// read a little-endian u128
     pub fn u128(&mut self) -> Result<u128> {
         Ok(u128::from_le_bytes(self.take(16)?.try_into()?))
     }
@@ -93,6 +106,7 @@ impl<'a> Rd<'a> {
         }
         Ok(n as usize)
     }
+    /// error unless every byte was consumed: a snapshot with extra bytes at the end is refused
     pub fn done(&self) -> Result<()> {
         if self.p != self.b.len() {
             bail!("trailing bytes in the snapshot");
@@ -225,15 +239,18 @@ impl Store {
         g.records.push(loc);
         Ok(loc)
     }
+    /// read one record's payload back from the file, given its (offset, length) as returned by `record`
     pub fn read(&self, loc: (u64, u32)) -> Result<Vec<u8>> {
         let g = self.inner.lock().unwrap();
         let mut b = vec![0u8; loc.1 as usize];
         g.file.read_exact_at(&mut b, loc.0)?;
         Ok(b)
     }
+    /// number of records in the log
     pub fn len(&self) -> usize {
         self.inner.lock().unwrap().records.len()
     }
+    /// (file offset, payload length) of record `i`, if it exists
     pub fn record(&self, i: usize) -> Option<(u64, u32)> {
         self.inner.lock().unwrap().records.get(i).copied()
     }

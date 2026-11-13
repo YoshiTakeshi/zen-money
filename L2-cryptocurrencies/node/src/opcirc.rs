@@ -75,9 +75,11 @@ pub struct OpT {
     sig2: ec::SigT,
 }
 
+/// an 8-byte domain tag as one field element (the same value `locks::Fw::new` starts a message with)
 pub(crate) fn tag_felt(t: &[u8; 8]) -> F {
     F::from_canonical_u64(u64::from_le_bytes(*t))
 }
+/// choose between two 4-element values: x when c is true, y otherwise
 pub(crate) fn sel4(
     b: &mut CircuitBuilder<F, D>,
     c: BoolTarget,
@@ -86,6 +88,7 @@ pub(crate) fn sel4(
 ) -> [Target; 4] {
     core::array::from_fn(|k| b.select(c, x[k], y[k]))
 }
+/// choose between two hashes: x when c is true, y otherwise
 pub(crate) fn sel_hash(
     b: &mut CircuitBuilder<F, D>,
     c: BoolTarget,
@@ -101,10 +104,14 @@ pub(crate) fn limbs62(b: &mut CircuitBuilder<F, D>, x: Target) -> (Target, Targe
     let bits = b.split_le(x, 62);
     (b.le_sum(bits[..32].iter()), b.le_sum(bits[32..].iter()))
 }
+/// pack bits into 32-bit limbs, least significant first (the limb layout signed messages use)
 pub(crate) fn limbs_of_bits(b: &mut CircuitBuilder<F, D>, bits: &[BoolTarget]) -> Vec<Target> {
     bits.chunks(32).map(|c| b.le_sum(c.iter())).collect()
 }
 
+/// BUILD THE VAULT-FAMILY CIRCUIT (Make, VaultClaim, VaultRefund). One call lays down every constraint of the leaf; `gates` and `degree_bits`
+/// pad it to the common shape so the universal merge accepts it. REVIEW: every `add_virtual_*` target in here must end up constrained;
+/// `BoolTarget::new_unsafe` values rely on a constraint elsewhere that forces them to 0 or 1.
 pub fn build_op(
     chain: u64,
     prm: &ec::Params,
@@ -492,6 +499,7 @@ pub fn build_op(
         t,
     }
 }
+/// the hash of an empty account leaf, as circuit constants
 pub(crate) fn empty_leaf_t(b: &mut CircuitBuilder<F, D>) -> HashOutTarget {
     let e = empty_leaf();
     HashOutTarget {
@@ -766,6 +774,7 @@ pub fn r_of(a: ec::P, e: u128, s: &BigUint) -> ec::P {
         ec::neg(ec::mul(a, &BigUint::from(e))),
     )
 }
+/// bytes as 32-bit little-endian limbs (the last limb is zero-padded): how byte strings enter Poseidon messages
 pub(crate) fn limbs(b: &[u8]) -> Vec<F> {
     b.chunks(4)
         .map(|c| {
@@ -775,6 +784,7 @@ pub(crate) fn limbs(b: &[u8]) -> Vec<F> {
         })
         .collect()
 }
+/// witness for a Merkle path: the 32 index bits of `idx` and the sibling hashes
 pub(crate) fn set_path(
     pw: &mut PartialWitness<F>,
     bits: &[BoolTarget],
@@ -788,6 +798,7 @@ pub(crate) fn set_path(
     }
     Ok(())
 }
+/// witness for an account leaf: key hash, balance, nonce and the five "counts once" fields
 pub(crate) fn set_acct(
     pw: &mut PartialWitness<F>,
     pk: &[Target; 4],
@@ -801,6 +812,8 @@ pub(crate) fn set_acct(
     pw.set_target(nonce, F::from_canonical_u64(a.nonce))?;
     crate::set_peg(pw, peg, a)
 }
+/// fill every target of the vault leaf from the node's replay of the operation (`OpInput`). The prover has no freedom the circuit does not
+/// constrain: a witness that breaks a rule makes proving fail, which is what `soundness.rs` tests.
 pub fn set_witness(l: &OpLeaf, pw: &mut PartialWitness<F>, inp: &OpInput) -> Result<()> {
     use crate::locks::{Op, OpReq, SignedOp, Terms, vault_claim_msg};
     let t = &l.t;

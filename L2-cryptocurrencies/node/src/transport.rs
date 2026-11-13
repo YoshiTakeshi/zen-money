@@ -16,9 +16,11 @@ use sha2::{Digest, Sha256};
 
 const MAC: usize = 16;
 pub const MAX_SKEW: u64 = 60;
+/// bytes as lower-case hex text (the wire format is JSON, so every binary field travels as hex)
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
+/// hex text back to bytes; an odd tail or a non-hex character is an error, never a panic
 fn unhex(s: &str) -> Result<Vec<u8>> {
     (0..s.len() / 2)
         .map(|i| {
@@ -29,6 +31,8 @@ fn unhex(s: &str) -> Result<Vec<u8>> {
         })
         .collect()
 }
+/// the hash used for everything in this file: SHA-256 over the parts, each part prefixed by its length (u32, little-endian),
+/// so two different lists of parts can never give the same input bytes. REVIEW: all keys, key streams and MACs below come from this one function.
 fn h(parts: &[&[u8]]) -> [u8; 32] {
     let mut x = Sha256::new();
     for p in parts {
@@ -37,12 +41,16 @@ fn h(parts: &[&[u8]]) -> [u8; 32] {
     }
     x.finalize().into()
 }
+/// Diffie-Hellman on the node's own curve (EcGFp5): hash of the encoded point sk * pt, under the label "Zen-tr-dh".
+/// REVIEW: `pt` comes off the wire; `mint::decode_point` is what must reject points that are off the curve or outside the prime-order group.
 fn dh(sk: &BigUint, pt: &[u8; 41]) -> Result<[u8; 32]> {
     Ok(h(&[
         b"Zen-tr-dh",
         &mint::encode_point(ec::mul(mint::decode_point(pt)?, sk)),
     ]))
 }
+/// a key stream of `n` bytes: h("Zen-tr-ks", k, counter) for counter = 0, 1, 2, ... (SHA-256 in counter mode).
+/// REVIEW: home-made stream cipher, listed in docs/SECURITY-REVIEW.md as something to replace with a standard AEAD.
 fn stream(k: &[u8; 32], n: usize) -> Vec<u8> {
     let mut o = vec![];
     let mut c = 0u32;
@@ -53,22 +61,26 @@ fn stream(k: &[u8; 32], n: usize) -> Vec<u8> {
     o.truncate(n);
     o
 }
+/// encrypt or decrypt `d` by XOR with the key stream of `k` (the same call does both). No integrity by itself: see `tag`.
 fn xor(k: &[u8; 32], d: &[u8]) -> Vec<u8> {
     d.iter()
         .zip(stream(k, d.len()))
         .map(|(a, b)| a ^ b)
         .collect()
 }
+/// the MAC: the first 16 bytes of h("Zen-tr-mac", k, parts...). REVIEW: the comparison at the call sites is a plain `!=`, not constant-time.
 fn tag(k: &[u8; 32], parts: &[&[u8]]) -> [u8; MAC] {
     let mut v = vec![b"Zen-tr-mac".as_slice(), k.as_slice()];
     v.extend_from_slice(parts);
     h(&v)[..MAC].try_into().unwrap()
 }
+/// a 32-byte digest as the four field elements a signature signs (8 bytes each, little-endian, reduced into the field)
 fn to_msg(d: [u8; 32]) -> [F; 4] {
     std::array::from_fn(|i| {
         F::from_noncanonical_u64(u64::from_le_bytes(d[8 * i..8 * i + 8].try_into().unwrap()))
     })
 }
+/// a fresh secret scalar in 1..n from the operating system's random source (64 random bytes reduced mod n, so the bias is negligible)
 fn rand_scalar() -> BigUint {
     loop {
         let mut b = [0u8; 64];
@@ -79,20 +91,26 @@ fn rand_scalar() -> BigUint {
         }
     }
 }
+/// the encoded public point k * G of a secret scalar
 fn point_of(k: &BigUint) -> [u8; 41] {
     mint::encode_point(ec::mul_g(&ec::params(), k))
 }
+/// read field `k` of a JSON message as exactly N bytes of hex
 fn arr<const N: usize>(v: &Value, k: &str) -> Result<[u8; N]> {
     unhex(v[k].as_str().unwrap_or(""))?
         .try_into()
         .map_err(|_| anyhow!("{k}: expected {N} bytes"))
 }
+/// the key that protects a request: from the first Diffie-Hellman value (caller's one-time key x server's static key) and the one-time public key
 fn k_req(d1: &[u8; 32], e: &[u8; 41]) -> [u8; 32] {
     h(&[b"Zen-tr-req", d1, e])
 }
+/// the key that protects an answer: from both Diffie-Hellman values and both one-time public keys, so it needs the server's one-time secret too
 fn k_resp(d1: &[u8; 32], d2: &[u8; 32], e: &[u8; 41], es: &[u8; 41]) -> [u8; 32] {
     h(&[b"Zen-tr-resp", d1, d2, e, es])
 }
+/// what the caller signs to prove who it is: its one-time key, the server's static key and its own static key. Binding all three stops a third party
+/// from re-wrapping the signature under another one-time key or for another server.
 fn auth_msg(e: &[u8; 41], s: &[u8; 41], c: &[u8; 41]) -> [F; 4] {
     to_msg(h(&[b"Zen-tr-auth", e, s, c]))
 }
@@ -135,6 +153,8 @@ pub struct Opened {
     e_pub: [u8; 41],
     d1: [u8; 32],
 }
+/// the server's side: open a sealed request. Order of checks: field sizes, MAC (so nothing unauthenticated is parsed), the caller's signature,
+/// then the time stamp (at most `MAX_SKEW` seconds from `now`). The caller must still pass `Opened::nonce` to `Replays::first` to refuse copies.
 pub fn open_request(
     server_sk: &BigUint,
     server_pub: &[u8; 41],
@@ -198,6 +218,7 @@ impl Opened {
         self.e_pub
     }
 }
+/// the server's side: seal the answer under `k_resp`, with a fresh one-time key (this is what gives answers forward secrecy)
 pub fn seal_answer(o: &Opened, ans: &Value) -> Result<Value> {
     let es = rand_scalar();
     let es_pub = point_of(&es);
@@ -206,6 +227,7 @@ pub fn seal_answer(o: &Opened, ans: &Value) -> Result<Value> {
     let ct = xor(&k, &serde_json::to_vec(ans)?);
     Ok(json!({"hs": hex(&es_pub), "ct": hex(&ct), "mac": hex(&tag(&k, &[&es_pub, &ct]))}))
 }
+/// the caller's side: open the server's answer with the `Call` kept from `seal_request`. A plain `{"err": ...}` from the server is passed on as an error.
 pub fn open_answer(call: &Call, wire: &Value) -> Result<Value> {
     if let Some(e) = wire["err"].as_str() {
         bail!("{e}");

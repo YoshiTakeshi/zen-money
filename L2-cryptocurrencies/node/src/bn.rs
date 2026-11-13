@@ -29,6 +29,7 @@ struct K {
     m: [[Fr; 4]; 4],
     p: [[Fr; 4]; 4],
 }
+/// the Poseidon constants as field elements, parsed once from the decimal strings in `bn_consts.rs`
 fn k() -> &'static K {
     static KS: OnceLock<K> = OnceLock::new();
     KS.get_or_init(|| {
@@ -44,14 +45,17 @@ fn k() -> &'static K {
 const W: usize = 4;
 const FULL: usize = 8;
 const PARTIAL: usize = 56;
+/// the S-box x^5 (reference version)
 fn exp5(x: Fr) -> Fr {
     let x2 = x * x;
     x2 * x2 * x
 }
+/// add the round constants starting at index `it`
 fn ark(s: [Fr; 4], it: usize) -> [Fr; 4] {
     let c = &k().c;
     core::array::from_fn(|i| s[i] + c[it + i])
 }
+/// multiply the state by a 4x4 matrix (reference version: column `i` of `m` dotted with the state)
 fn mix(s: [Fr; 4], m: &[[Fr; 4]; 4]) -> [Fr; 4] {
     core::array::from_fn(|i| {
         let mut r = Fr::from(0u64);
@@ -61,6 +65,7 @@ fn mix(s: [Fr; 4], m: &[[Fr; 4]; 4]) -> [Fr; 4] {
         r
     })
 }
+/// half of the full rounds: the first half ends with the pre-sparse matrix P, the second half with M
 fn full(mut s: [Fr; 4], first: bool) -> [Fr; 4] {
     for i in 0..FULL / 2 - 1 {
         s = s.map(exp5);
@@ -79,6 +84,7 @@ fn full(mut s: [Fr; 4], first: bool) -> [Fr; 4] {
         mix(s, &k().m)
     }
 }
+/// the 56 partial rounds in the optimised "sparse matrix" form used by iden3 / gnark
 fn partial(mut s: [Fr; 4]) -> [Fr; 4] {
     let (c, sc) = (&k().c, &k().s);
     for i in 0..PARTIAL {
@@ -94,6 +100,7 @@ fn partial(mut s: [Fr; 4]) -> [Fr; 4] {
     }
     s
 }
+/// the reference permutation, written to follow gnark-plonky2-verifier's poseidon/bn254.go line by line. Tests compare `permute_fast` against it.
 pub fn permute_ref(s: [Fr; 4]) -> [Fr; 4] {
     let s = ark(s, 0);
     let s = full(s, true);
@@ -106,6 +113,7 @@ struct KT {
     mt: [[Fr; 4]; 4],
     pt: [[Fr; 4]; 4],
 }
+/// the two matrices transposed once, so `mixf` can use one sum-of-products per output
 fn kt() -> &'static KT {
     static T: OnceLock<KT> = OnceLock::new();
     T.get_or_init(|| {
@@ -116,15 +124,18 @@ fn kt() -> &'static KT {
         }
     })
 }
+/// the S-box x^5 using squarings
 #[inline(always)]
 fn exp5f(x: Fr) -> Fr {
     let x2 = x.square();
     x2.square() * x
 }
+/// matrix times state with ark-ff's `sum_of_products` (one reduction per output instead of four)
 #[inline(always)]
 fn mixf(s: &[Fr; 4], mt: &[[Fr; 4]; 4]) -> [Fr; 4] {
     core::array::from_fn(|i| Fr::sum_of_products(&mt[i], s))
 }
+/// the same permutation as `permute_ref`, restructured for speed. It must give identical outputs (checked by the tests in this file).
 fn permute_fast(s: [Fr; 4]) -> [Fr; 4] {
     let (k, t) = (k(), kt());
     let mut s: [Fr; 4] = core::array::from_fn(|i| s[i] + k.c[i]);
@@ -157,6 +168,7 @@ fn permute_fast(s: [Fr; 4]) -> [Fr; 4] {
     s = s.map(exp5f);
     mixf(&s, &t.mt)
 }
+/// the permutation the hasher uses (the fast one)
 pub fn permute(s: [Fr; 4]) -> [Fr; 4] {
     permute_fast(s)
 }
@@ -169,6 +181,7 @@ fn pack(chunk: &[F]) -> Fr {
     }
     Fr::from_bigint(ark_ff::BigInt::new(l)).expect("< modulus")
 }
+/// a field element as an unsigned big integer
 fn to_big(x: &Fr) -> BigUint {
     BigUint::from_bytes_le(&x.into_bigint().to_bytes_le())
 }
@@ -176,11 +189,13 @@ fn to_big(x: &Fr) -> BigUint {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BnHash(pub Fr);
 impl Serialize for BnHash {
+    /// serialised as the decimal string of the value, the form gnark's JSON reader takes
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&to_big(&self.0).to_string())
     }
 }
 impl<'de> Deserialize<'de> for BnHash {
+    /// read back from a decimal string; anything that is not a field element is an error
     fn deserialize<De: Deserializer<'de>>(d: De) -> Result<Self, De::Error> {
         let s = String::deserialize(d)?;
         Fr::from_str(&s)
@@ -189,14 +204,17 @@ impl<'de> Deserialize<'de> for BnHash {
     }
 }
 impl GenericHashOut<F> for BnHash {
+    /// 32 little-endian bytes of the canonical value
     fn to_bytes(&self) -> Vec<u8> {
         let mut b = self.0.into_bigint().to_bytes_le();
         b.resize(32, 0);
         b
     }
+    /// from little-endian bytes, reduced mod the field order (plonky2's trait gives no way to fail here)
     fn from_bytes(bytes: &[u8]) -> Self {
         BnHash(Fr::from_le_bytes_mod_order(bytes))
     }
+    /// the hash as five Goldilocks elements of 56 bits each (how the Fiat-Shamir challenger absorbs a BN254 hash)
     fn to_vec(&self) -> Vec<F> {
         // 56-bit chunks of the canonical value, least significant first (as gnark's ToVec)
         let l = self.0.into_bigint().0;
@@ -220,6 +238,7 @@ impl Hasher<F> for PoseidonBn254Hash {
     const HASH_SIZE: usize = 32;
     type Hash = BnHash;
     type Permutation = PoseidonPermutation<F>;
+    /// sponge over Goldilocks inputs: nine inputs per permutation, packed three to a BN254 element into state slots 1..3; the output is slot 0
     fn hash_no_pad(input: &[F]) -> BnHash {
         let mut s = [Fr::ZERO; 4];
         for chunk in input.chunks(9) {
@@ -230,6 +249,7 @@ impl Hasher<F> for PoseidonBn254Hash {
         }
         BnHash(s[0])
     }
+    /// three or fewer inputs are packed without hashing (plonky2's rule for short leaves); otherwise `hash_no_pad`
     fn hash_or_noop(inputs: &[F]) -> BnHash {
         if inputs.len() <= 3 {
             BnHash(pack(inputs))
@@ -237,6 +257,7 @@ impl Hasher<F> for PoseidonBn254Hash {
             Self::hash_no_pad(inputs)
         }
     }
+    /// Merkle node: permute [0, 0, left, right] and take slot 0
     fn two_to_one(l: BnHash, r: BnHash) -> BnHash {
         BnHash(permute([Fr::from(0u64), Fr::from(0u64), l.0, r.0])[0])
     }

@@ -64,6 +64,7 @@ pub enum Msg {
     Op(Vec<u8>),
 }
 impl Msg {
+    /// a peer message as bytes: one type byte, then the payload
     fn encode(&self) -> Vec<u8> {
         match self {
             Msg::Hello {
@@ -147,6 +148,8 @@ impl Msg {
             }
         }
     }
+    /// parse a peer message from an untrusted frame: type byte, then fixed-size or length-checked fields; unknown types are an error.
+    /// REVIEW: a fuzzing target (the first code that touches bytes from the network).
     fn decode(b: &[u8]) -> Result<Msg> {
         let (t, p) = b.split_first().ok_or_else(|| anyhow!("empty frame"))?;
         let h32 = |x: &[u8]| -> Result<[u8; 32]> {
@@ -194,6 +197,7 @@ impl Msg {
         })
     }
 }
+/// send one frame: u32 length (little-endian), then the message bytes
 fn write_msg(w: &mut impl Write, m: &Msg) -> std::io::Result<()> {
     let b = m.encode();
     w.write_all(&(b.len() as u32).to_le_bytes())?;
@@ -212,9 +216,11 @@ fn read_msg(r: &mut impl Read) -> Result<Msg> {
     r.read_exact(&mut b)?;
     Msg::decode(&b)
 }
+/// true for a network error (a dropped connection), as opposed to a protocol violation by the peer
 fn is_io(e: &anyhow::Error) -> bool {
     e.downcast_ref::<std::io::Error>().is_some()
 }
+/// the wall clock in seconds since 1970 (0 if the clock is before 1970)
 pub fn now() -> u32 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -238,6 +244,7 @@ pub struct Limits {
     pub msgs_per_window: u32,
 }
 impl Default for Limits {
+    /// default limits: 32 inbound and 8 outbound peers, plus the ban time and rate limits below
     fn default() -> Limits {
         Limits {
             max_inbound: 32,
@@ -269,6 +276,7 @@ struct Session {
     win_start: Instant,
     win_count: u32,
 }
+/// queue a message for a peer without blocking; if its queue is full the message is dropped
 fn push(tx: &mpsc::SyncSender<Msg>, m: Msg) {
     let _ = tx.try_send(m);
 } // a peer that cannot keep up misses messages and is closed by the write timeout
@@ -294,6 +302,7 @@ pub struct Net {
     pub ops: Arc<Mutex<crate::locks::OpPool>>,
 }
 impl Net {
+    /// a network layer around a node; peers must present the same network id (chain, parameters, genesis allocation)
     pub fn new(node: Node) -> Net {
         let genesis = node.network_id(); // chain, parameters and genesis allocation: peers that differ in any of them cannot agree on a block
         Net {
@@ -311,10 +320,12 @@ impl Net {
             ops: Arc::new(Mutex::new(crate::locks::OpPool::new(2000))),
         }
     }
+    /// replace the default limits (tests use small ones)
     pub fn with_limits(mut self, l: Limits) -> Net {
         self.limits = l;
         self
     }
+    /// number of connected peers
     pub fn peer_count(&self) -> usize {
         self.peers.lock().unwrap().len()
     }
@@ -327,18 +338,23 @@ impl Net {
             .map(|p| (p.ip, p.inbound, p.addr))
             .collect()
     }
+    /// number of peer addresses learned so far
     pub fn known_addr_count(&self) -> usize {
         self.addrs.lock().unwrap().len()
     }
+    /// height of the best block
     pub fn height(&self) -> u64 {
         self.node.lock().unwrap().tip().height
     }
+    /// hash of the best block
     pub fn best(&self) -> [u8; 32] {
         self.node.lock().unwrap().best
     }
+    /// number of peer addresses learned so far (same as `known_addr_count`)
     pub fn known_addrs(&self) -> usize {
         self.addrs.lock().unwrap().len()
     }
+    /// true while a ban on this IP address is still running; an expired ban is removed
     pub fn is_banned(&self, ip: IpAddr) -> bool {
         let mut b = self.bans.lock().unwrap();
         match b.get(&ip) {
@@ -350,10 +366,12 @@ impl Net {
             None => false,
         }
     }
+    /// ban an IP address from now (for `limits.ban_secs`)
     fn ban(&self, ip: IpAddr) {
         self.bans.lock().unwrap().insert(ip, Instant::now());
     }
 
+    /// accept peers on `addr`; returns the bound address (so port 0 can be used in tests)
     pub fn listen(&self, addr: &str) -> Result<SocketAddr> {
         let l = TcpListener::bind(addr)?;
         let a = l.local_addr()?;
@@ -379,6 +397,7 @@ impl Net {
         });
         Ok(a)
     }
+    /// dial a peer (refused when banned or when the outbound limit is reached)
     pub fn connect(&self, addr: SocketAddr) -> Result<()> {
         if self.is_banned(addr.ip()) {
             bail!("that address is banned");
@@ -431,6 +450,7 @@ impl Net {
         });
     }
 
+    /// our handshake message: network id, best block and height, and the port we listen on
     fn hello(&self) -> Msg {
         let n = self.node.lock().unwrap();
         let port = self.my_addr.lock().unwrap().map_or(0, |a| a.port());
@@ -442,6 +462,7 @@ impl Net {
         }
     }
 
+    /// start the reader and writer threads for one connection and register the peer; enforces the inbound and outbound limits
     fn spawn_peer(&self, stream: TcpStream, inbound: bool) {
         let Ok(pa) = stream.peer_addr() else { return };
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
@@ -541,6 +562,8 @@ impl Net {
         Ok(())
     }
 
+    /// react to one message from a peer: handshake, inventory, block requests, blocks, payments, operations, peer addresses, account queries.
+    /// A protocol violation returns an error, which closes the connection and may ban the peer.
     fn handle(&self, s: &mut Session, tx: &mpsc::SyncSender<Msg>, msg: Msg) -> Result<()> {
         match msg {
             Msg::Hello {
@@ -722,6 +745,7 @@ impl Net {
         }
         Ok(())
     }
+    /// announce a block hash to every peer except the one it came from
     fn relay(&self, hash: [u8; 32], except: Option<u64>) {
         for p in self.peers.lock().unwrap().iter() {
             if Some(p.id) != except {
@@ -786,6 +810,7 @@ impl Net {
         }
         Ok(Outcome { main, attached })
     }
+    /// hand a received block to the node (validate, attach, maybe reorganise) and relay it if it was new
     fn process(&self, blk: &Block, now: u32) -> Result<Added> {
         let look = self.node.lock().unwrap().lookup(blk);
         match look {
@@ -820,6 +845,7 @@ pub struct AcctInfo {
     pub next_nonce: u64,
     pub height: u64,
 }
+/// one-shot client: connect, send one message, read frames until one satisfies `want` (5 s connect, 10 s read timeouts)
 fn ask(addr: SocketAddr, m: Msg, want: impl Fn(&Msg) -> bool) -> Result<Msg> {
     let mut s = TcpStream::connect_timeout(&addr, Duration::from_secs(5))?;
     s.set_read_timeout(Some(Duration::from_secs(10)))?;
@@ -840,6 +866,7 @@ pub struct Probe {
     pub tip: [u8; 32],
 }
 impl Probe {
+    /// a light connection used by tools (wallet, miner): handshake with a node and check that it is on the expected network
     pub fn connect(
         addr: SocketAddr,
         network_id: [u8; 32],
@@ -899,6 +926,7 @@ impl Probe {
         Ok(None)
     }
 }
+/// ask a node for an address's balance and nonce
 pub fn query_account(node: SocketAddr, address: &[crate::F; 4]) -> Result<AcctInfo> {
     match ask(node, Msg::GetAcct(tx::addr_bytes(address)), |m| {
         matches!(m, Msg::Acct { .. })
@@ -942,6 +970,7 @@ pub fn send_op(node: SocketAddr, o: &crate::locks::SignedOp) -> Result<()> {
 // ---------------------------------------------------------------- Stratum v1
 /// the pool side: builds the minted block (tickets, payments, stamp) that miners then seal
 pub trait TemplateSource: Send + Sync {
+    /// the next candidate block on top of `tip`
     fn template(&self, tip: &Chain) -> Result<Block>;
 }
 
@@ -964,10 +993,12 @@ pub struct Stratum {
 const MAX_STRATUM_CONNS: u64 = 256;
 const MAX_LINE: u64 = 16 * 1024;
 const STRATUM_IDLE_SECS: u64 = 600;
+/// a u32 from hex text (error on bad input)
 fn hex32(s: &str) -> Result<u32> {
     Ok(u32::from_str_radix(s, 16)?)
 }
 impl Stratum {
+    /// a Stratum v1 server that hands out jobs from `source` and submits solved blocks to `net`
     pub fn new(net: Net, source: Arc<dyn TemplateSource>) -> Stratum {
         Stratum {
             net,
@@ -982,6 +1013,8 @@ impl Stratum {
             rejected: Arc::new(AtomicU64::new(0)),
         }
     }
+    /// accept miners on `addr` (at most MAX_STRATUM_CONNS at once, none from banned addresses); returns the bound address.
+    /// REVIEW: the `active` counter is decremented after `serve` returns, so it is NOT decremented if `serve` panics (see docs/KNOWN-ISSUES.md, item 1).
     pub fn listen(&self, addr: &str) -> Result<SocketAddr> {
         let l = TcpListener::bind(addr)?;
         let a = l.local_addr()?;
@@ -1039,6 +1072,7 @@ impl Stratum {
             return Ok((id, tpl));
         }
     }
+    /// send the current job to one miner as `mining.notify`
     fn notify(&self, w: &mut TcpStream, id: &str, tpl: &Block) -> Result<()> {
         let cb = seal::parse_coinbase(&tpl.coinbase)?;
         let job = seal::make_job(
@@ -1056,6 +1090,8 @@ impl Stratum {
         w.flush()?;
         Ok(())
     }
+    /// one miner connection: subscribe, authorize, notify on new work, and check submitted shares.
+    /// REVIEW: `mining.submit` passes the miner's extranonce2 text to `seal::unhex`, which panics on malformed hex (docs/KNOWN-ISSUES.md, item 1).
     fn serve(&self, stream: TcpStream) -> Result<()> {
         stream.set_read_timeout(Some(Duration::from_millis(100)))?;
         let mut w = stream.try_clone()?;
@@ -1183,6 +1219,7 @@ impl Stratum {
         }
     }
 }
+/// the chain id a block template was built for (read from its coinbase)
 fn tpl_chain(tpl: &Block) -> Result<u8> {
     Ok(seal::parse_coinbase(&tpl.coinbase)?.chain)
 }

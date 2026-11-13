@@ -81,9 +81,11 @@ pub struct FaT {
     ra: RcT,
     rb: RcT,
 }
+/// split a value into two limbs with range checks (see `limbs62`)
 fn lim(b: &mut CircuitBuilder<F, D>, x: Target) -> (Target, Target) {
     limbs62(b, x)
 }
+/// the Poseidon digest of one member's state, as the member and the coordinator sign it
 fn member_digest(
     b: &mut CircuitBuilder<F, D>,
     m: &MemT,
@@ -110,6 +112,7 @@ fn member_digest(
     v.extend(pld);
     hash_t(b, v)
 }
+/// the factory lock's address computed in-circuit from its terms (coordinator, key, delay, salt, member list), so the leaf is bound to them
 fn fact_addr(
     b: &mut CircuitBuilder<F, D>,
     coord: [Target; 4],
@@ -136,6 +139,7 @@ struct Slots {
     wits_d: HashOutTarget,
     pay_c: Target,
 }
+/// the point-lock settlement checks for one member's channel (which locks are opened by a witness, which have expired, who is paid)
 #[allow(clippy::too_many_arguments)]
 fn settle_slots(
     b: &mut CircuitBuilder<F, D>,
@@ -205,6 +209,8 @@ fn settle_slots(
     }
 }
 
+/// BUILD THE FACTORY-FAMILY CIRCUIT (make, fund, start, post, exit, exit-now) for up to eight members, padded to the common leaf shape.
+/// REVIEW: this file uses `BoolTarget::new_unsafe` most often; each use needs an argument for why the value is already 0 or 1.
 pub fn build_factory(
     chain: u64,
     prm: &ec::Params,
@@ -862,13 +868,16 @@ pub fn build_factory(
         t,
     }
 }
+/// the negation of a selector, as a plain target
 fn nmk_t(b: &mut CircuitBuilder<F, D>, s: BoolTarget) -> Target {
     let n = b.not(s);
     n.target
 }
+/// true when a member slot is NOT in use
 fn present_not(b: &mut CircuitBuilder<F, D>, p: BoolTarget) -> BoolTarget {
     b.not(p)
 }
+/// the member's "has exited" flag
 fn mems_exited(m: &MemT) -> BoolTarget {
     m.k2
 }
@@ -884,9 +893,11 @@ pub struct FactoryInput<'a> {
     pub sender_a: ec::P,
     pub sender_sig: (u128, BigUint),
 }
+/// the low S_BITS bits of a scalar, least significant first
 fn bits_of(x: &BigUint) -> Vec<bool> {
     (0..ec::S_BITS).map(|i| x.bit(i as u64)).collect()
 }
+/// fill every target of the factory leaf from the node's replay; an operation touches at least the sender and the factory
 pub fn set_witness(l: &FactoryLeaf, pw: &mut PartialWitness<F>, inp: &FactoryInput) -> Result<()> {
     use crate::locks::{ChanSigs, Dest, Op, SubState, Terms};
     let t = &l.t;

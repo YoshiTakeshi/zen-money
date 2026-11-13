@@ -31,6 +31,7 @@ pub struct SignedPay {
     pub s: [u8; 40],
 }
 
+/// an address (four field elements) as 32 bytes: each element's canonical value, little-endian
 pub fn addr_bytes(a: &[F; 4]) -> [u8; 32] {
     let mut o = [0u8; 32];
     for i in 0..4 {
@@ -38,11 +39,13 @@ pub fn addr_bytes(a: &[F; 4]) -> [u8; 32] {
     }
     o
 }
+/// an address as four integers, for use as a map key
 pub fn addr_key(a: &[F; 4]) -> [u64; 4] {
     a.map(|x| x.to_canonical_u64())
 }
 
 impl SignedPay {
+    /// the fixed wire form of a signed payment: sender's public key 41 | receiver 32 | amount 8 | fee 8 | nonce 8 | close flag 1 | signature
     pub fn to_bytes(&self) -> [u8; TX_BYTES] {
         let mut o = [0u8; TX_BYTES];
         o[..41].copy_from_slice(&self.from_a);
@@ -55,6 +58,7 @@ impl SignedPay {
         o[114..].copy_from_slice(&self.s);
         o
     }
+    /// parse a signed payment. Checks the length and that the close flag is 0 or 1; the signature itself is checked by the mempool and by the proof.
     pub fn from_bytes(b: &[u8]) -> Result<SignedPay> {
         if b.len() != TX_BYTES {
             bail!("payment is {} bytes, not {}", b.len(), TX_BYTES);
@@ -74,6 +78,7 @@ impl SignedPay {
             s: b[114..].try_into()?,
         })
     }
+    /// the payment id: SHA-256 of the label "Zen-tx-v1" and the payment bytes (signature included)
     pub fn id(&self) -> [u8; 32] {
         let mut h = Sha256::new();
         h.update(b"Zen-tx-v1");
@@ -85,6 +90,7 @@ impl SignedPay {
         let a = mint::decode_point(&self.from_a)?;
         Ok((a, ec::pk_hash(a)))
     }
+    /// the four field elements the sender signs (Poseidon over chain id, sender, receiver, amount, fee, nonce, close flag: see `msg_native` in main.rs)
     pub fn message(&self, from: &[F; 4]) -> [F; 4] {
         crate::msg_native(from, &self.to, self.amt, self.fee, self.nonce, self.close)
     }
@@ -115,10 +121,12 @@ fn checksum(a: &[u8; 32]) -> [u8; 4] {
     let h = Sha256::digest(Sha256::digest(a));
     h[..4].try_into().unwrap()
 }
+/// the text form of an address: "zen1", 64 hex digits, then an 8-hex-digit checksum
 pub fn address_string(a: &[F; 4]) -> String {
     let b = addr_bytes(a);
     format!("zen1{}{}", hex(&b), hex(&checksum(&b)))
 }
+/// read a "zen1..." address: checks the prefix, the length, the checksum and that each of the four 8-byte words is a canonical field element
 pub fn parse_address(s: &str) -> Result<[F; 4]> {
     let s = s
         .trim()
@@ -135,9 +143,11 @@ pub fn parse_address(s: &str) -> Result<[F; 4]> {
     }
     crate::node::addr_from(&b)
 }
+/// bytes as lower-case hex
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
+/// hex to bytes; malformed text is an error
 fn unhex(s: &str) -> Result<Vec<u8>> {
     (0..s.len() / 2)
         .map(|i| {
@@ -167,9 +177,11 @@ impl Wallet {
         rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut b);
         Wallet::from_secret(BigUint::from_bytes_le(&b))
     }
+    /// this wallet's address as field elements
     pub fn address(&self) -> [F; 4] {
         self.key.addr
     }
+    /// this wallet's address as "zen1..." text
     pub fn address_string(&self) -> String {
         address_string(&self.key.addr)
     }
@@ -184,6 +196,7 @@ impl Wallet {
         b.reverse();
         hex(&b)
     }
+    /// write the secret key to a new file (64 hex digits). An existing file is never overwritten. REVIEW: the key is stored unencrypted.
     pub fn save(&self, path: &Path) -> Result<()> {
         if path.exists() {
             bail!(
@@ -199,6 +212,7 @@ impl Wallet {
         }
         Ok(())
     }
+    /// read a wallet file (64 hex digits) back into a key pair
     pub fn load(path: &Path) -> Result<Wallet> {
         let t = std::fs::read_to_string(path)?;
         let mut b = unhex(t.trim())?;
@@ -340,6 +354,7 @@ pub(crate) fn split_node(s: &str) -> Result<(std::net::SocketAddr, String)> {
         .ok_or_else(|| anyhow!("give the node as <p2p address>,<api address>"))?;
     Ok((p.parse()?, a.to_string()))
 }
+/// a minimal HTTP/1.1 GET against a node's local API (`host:port`), returning the JSON body; 5 s connect and 20 s read timeouts
 pub(crate) fn http_get(api: &str, path: &str) -> Result<serde_json::Value> {
     use std::io::{Read, Write};
     let addr: std::net::SocketAddr = api.parse()?;
@@ -361,6 +376,8 @@ pub(crate) fn http_get(api: &str, path: &str) -> Result<serde_json::Value> {
     }
     Ok(v)
 }
+/// the `wallet orders | order-make | order-reserve | order-bid | order-claim | order-reopen | order-return` commands: build the operation,
+/// sign it with the wallet key and hand it to the node
 fn order_cmd(c: &str, a: &[String]) -> Result<()> {
     use crate::locks::{OpReq, OrderState, SignedOp, Terms};
     let arg = |i: usize, what: &str| a.get(i).cloned().ok_or_else(|| anyhow!("missing {what}"));

@@ -110,6 +110,7 @@ pub struct ChT {
     rb: RcT,
 }
 
+/// targets for a fixed-size list of NP point locks plus its real length (unused slots are padding)
 pub(crate) fn add_pl(b: &mut CircuitBuilder<F, D>) -> PlT {
     PlT {
         len: b.add_virtual_target(),
@@ -121,6 +122,7 @@ pub(crate) fn add_pl(b: &mut CircuitBuilder<F, D>) -> PlT {
         expiry: (0..NP).map(|_| b.add_virtual_target()).collect(),
     }
 }
+/// targets for one payout receiver: its old account leaf, whether the account is new, and its Merkle path
 pub(crate) fn add_rc(b: &mut CircuitBuilder<F, D>) -> RcT {
     RcT {
         o_pk: core::array::from_fn(|_| b.add_virtual_target()),
@@ -206,6 +208,7 @@ pub(crate) fn need(b: &mut CircuitBuilder<F, D>, guard: BoolTarget, cond: BoolTa
     let m = b.mul(guard.target, n.target);
     b.assert_zero(m);
 }
+/// a boolean that is true when two 4-element values are equal in every element
 pub(crate) fn all_eq4(b: &mut CircuitBuilder<F, D>, x: [Target; 4], y: [Target; 4]) -> BoolTarget {
     let mut e = b.constant_bool(true);
     for k in 0..4 {
@@ -263,6 +266,8 @@ pub(crate) fn recv(
     sel_hash(b, active, new, cur)
 }
 
+/// BUILD THE CHANNEL-FAMILY CIRCUIT (make, fund, start, update, settle, close; streams): three signature slots and eight point-lock
+/// opening checks, padded to the common leaf shape. REVIEW: same notes as `opcirc::build_op`.
 pub fn build_chan(
     chain: u64,
     prm: &ec::Params,
@@ -968,6 +973,7 @@ pub struct ChanInput<'a> {
     pub sender_a: ec::P,
     pub sender_sig: (u128, BigUint),
 }
+/// witness for the point-lock list: the real entries, then zero padding up to NP
 pub(crate) fn set_pl(pw: &mut PartialWitness<F>, p: &PlT, l: &[crate::locks::PLock]) -> Result<()> {
     pw.set_target(p.len, F::from_canonical_usize(l.len()))?;
     for i in 0..NP {
@@ -985,6 +991,7 @@ pub(crate) fn set_pl(pw: &mut PartialWitness<F>, p: &PlT, l: &[crate::locks::PLo
     }
     Ok(())
 }
+/// witness for a payout receiver: an existing account, or a new one created at `height`
 pub(crate) fn set_rc(
     pw: &mut PartialWitness<F>,
     r: &RcT,
@@ -1039,9 +1046,11 @@ pub(crate) fn set_rc(
     }
     Ok(())
 }
+/// the low S_BITS bits of a scalar, least significant first (the order the scalar loop consumes them)
 pub(crate) fn bits_of(x: &BigUint) -> Vec<bool> {
     (0..ec::S_BITS).map(|i| x.bit(i as u64)).collect()
 }
+/// fill every target of the channel leaf from the node's replay of the operation
 pub fn set_witness(l: &ChanLeaf, pw: &mut PartialWitness<F>, inp: &ChanInput) -> Result<()> {
     use crate::locks::{ChanSigs, ChanState, Op, Terms};
     let t = &l.t;

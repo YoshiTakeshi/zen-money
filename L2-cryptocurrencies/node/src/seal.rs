@@ -29,13 +29,16 @@ pub const VERSION_ROLL_MASK: u32 = 0x1fff_e000;
 pub const MAGIC: &[u8; 8] = b"ZenSeal1";
 pub const MAX_EXTRANONCE: usize = 32;
 
+/// SHA-256 applied twice, as in Bitcoin
 pub fn sha256d(b: &[u8]) -> [u8; 32] {
     let h = Sha256::digest(b);
     Sha256::digest(h).into()
 }
+/// bytes as lower-case hex
 pub fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
+/// hex to bytes. REVIEW: panics on odd length or a non-hex character; check that every caller passes text it has validated or produced itself.
 pub fn unhex(s: &str) -> Vec<u8> {
     (0..s.len())
         .step_by(2)
@@ -53,6 +56,7 @@ pub struct Header {
     pub nonce: u32,
 }
 impl Header {
+    /// the 80 header bytes in Bitcoin's layout: version, previous hash, merkle root (here: the commitment), time, bits, nonce; integers little-endian
     pub fn bytes(&self) -> [u8; 80] {
         let mut o = [0u8; 80];
         o[0..4].copy_from_slice(&self.version.to_le_bytes());
@@ -63,6 +67,7 @@ impl Header {
         o[76..80].copy_from_slice(&self.nonce.to_le_bytes());
         o
     }
+    /// the block hash: SHA256d of the 80 bytes
     pub fn hash(&self) -> [u8; 32] {
         sha256d(&self.bytes())
     }
@@ -87,6 +92,7 @@ pub fn bits_to_target(bits: u32) -> Result<BigUint> {
     }
     Ok(t)
 }
+/// a 256-bit target as Bitcoin's compact "nbits" (inverse of `bits_to_target`, with Bitcoin's rule that the mantissa's top bit stays clear)
 pub fn target_to_bits(t: &BigUint) -> u32 {
     let mut size = t.to_bytes_be().len() as u32;
     let mut mant: u32 = if size <= 3 {
@@ -108,6 +114,7 @@ pub fn difficulty_bits(d: u64) -> u32 {
     let max = bits_to_target(0x1d00_ffff).unwrap();
     target_to_bits(&(max / BigUint::from(d.max(1))))
 }
+/// true when `hash`, read as a little-endian number, is at or below the target of `bits`; malformed bits never pass
 pub fn meets(hash: &[u8; 32], bits: u32) -> bool {
     match bits_to_target(bits) {
         Ok(t) => BigUint::from_bytes_le(hash) <= t,
@@ -123,9 +130,12 @@ pub fn coinb1(chain: u8, height: u64, xlen: usize) -> Vec<u8> {
     v.push(xlen as u8);
     v
 }
+/// second half of the Stratum coinbase: the miner's 32-byte address (what comes after the extranonce)
 pub fn coinb2(miner: &[u8; 32]) -> Vec<u8> {
     miner.to_vec()
 }
+/// what the header commits to besides the coinbase: SHA-256 over the label "Zen-body-v1", the stamp's public values, the stamp,
+/// the hash of the block data and the tickets root. REVIEW: `stamp` is hashed without a length prefix; its length is fixed by the block rules, not here.
 pub fn body_root(
     public_values: &[u64],
     stamp: &[u8],
@@ -159,6 +169,7 @@ pub struct Coinbase {
     pub height: u64,
     pub miner: [u8; 32],
 }
+/// read chain, height and miner address back out of a coinbase; wrong magic, an oversized extranonce or any length mismatch is an error
 pub fn parse_coinbase(cb: &[u8]) -> Result<Coinbase> {
     if cb.len() < 18 + 32 || &cb[..8] != MAGIC {
         bail!("not a Zen coinbase");
@@ -221,11 +232,13 @@ pub struct Job {
     pub nbits: String,
     pub ntime: String,
 }
+/// reverse the bytes inside each 4-byte word: Stratum v1 sends the previous hash this way
 fn swap_words(b: &[u8]) -> Vec<u8> {
     b.chunks(4)
         .flat_map(|c| c.iter().rev().copied().collect::<Vec<_>>())
         .collect()
 }
+/// a Stratum `mining.notify` job for one candidate block: the body root travels as the single merkle branch, so a stock miner computes our commitment
 pub fn make_job(
     id: &str,
     chain: u8,
@@ -249,6 +262,7 @@ pub fn make_job(
     }
 }
 impl Job {
+    /// the job as the JSON line a Stratum v1 pool sends (`clean_jobs` = true)
     pub fn notify_json(&self) -> String {
         format!(
             r#"{{"id":null,"method":"mining.notify","params":["{}","{}","{}","{}",[{}],"{}","{}","{}",true]}}"#,
@@ -276,6 +290,8 @@ pub struct Share {
     pub nonce: u32,
     pub version: u32,
 }
+/// a reference miner that knows only Stratum v1: builds the coinbase and header from the job fields and tries nonces until a share meets the target
+/// or `max_hashes` is spent. Used by tests and `node mine`; it parses the job with `unhex`, so it must only be given well-formed jobs.
 pub fn stratum_mine(
     job: &Job,
     extranonce1: &[u8],

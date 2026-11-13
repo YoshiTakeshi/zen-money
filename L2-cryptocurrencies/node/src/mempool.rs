@@ -38,11 +38,13 @@ pub struct Mempool {
     /// payments that were confirmed, with the height of the tip when they were seen confirmed
     archive: VecDeque<(u64, [F; 4], SignedPay)>,
 }
+/// fee rate in millionths of the total (fee / (amount + fee)), used to rank payments
 fn rate(tx: &SignedPay) -> u128 {
     tx.fee as u128 * 1_000_000 / (tx.amt as u128 + tx.fee as u128).max(1)
 }
 
 impl Mempool {
+    /// an empty pool holding at most `max` payments
     pub fn new(max: usize) -> Mempool {
         Mempool {
             txs: HashMap::new(),
@@ -51,12 +53,15 @@ impl Mempool {
             archive: VecDeque::new(),
         }
     }
+    /// number of waiting payments
     pub fn len(&self) -> usize {
         self.txs.len()
     }
+    /// a waiting payment by id
     pub fn get(&self, id: &[u8; 32]) -> Option<&SignedPay> {
         self.txs.get(id).map(|e| &e.tx)
     }
+    /// true when a payment with this id is waiting
     pub fn contains(&self, id: &[u8; 32]) -> bool {
         self.txs.contains_key(id)
     }
@@ -82,6 +87,7 @@ impl Mempool {
                     .map_or(0, |q| q.len() as u64),
         )
     }
+    /// what this sender's waiting payments would spend in total (amount + fee), so a new payment is checked against balance minus this
     pub fn pending_spend(&self, addr: &[F; 4]) -> u128 {
         self.by_sender.get(&addr_key(addr)).map_or(0, |q| {
             q.values()
@@ -93,6 +99,7 @@ impl Mempool {
         })
     }
 
+    /// drop one payment and its entry in the per-sender index
     fn remove(&mut self, id: &[u8; 32]) {
         if let Some(e) = self.txs.remove(id) {
             let k = addr_key(&e.from);
@@ -115,6 +122,8 @@ impl Mempool {
         }
     }
 
+    /// the admission checks for a new payment, cheapest first (see the list at the top of this file). REVIEW: this is the node's first contact
+    /// with untrusted payment bytes after decoding; every rule here must also be enforced again by block validation, which does not trust the pool.
     pub fn admit(&mut self, chain: &Chain, tx: SignedPay) -> Result<Admit> {
         let id = tx.id();
         if self.txs.contains_key(&id) {
@@ -243,6 +252,7 @@ impl Mempool {
         }
     }
 
+    /// how many recently confirmed payments are remembered (so a late copy is recognised and not re-admitted)
     pub fn archived(&self) -> usize {
         self.archive.len()
     }

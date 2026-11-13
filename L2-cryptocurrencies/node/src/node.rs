@@ -44,6 +44,7 @@ pub fn addr_bytes(a: &[F; 4]) -> [u8; 32] {
     }
     o
 }
+/// an address from 32 bytes; a word at or above the field order is refused (one encoding per address)
 pub fn addr_from(b: &[u8; 32]) -> Result<[F; 4]> {
     let mut a = [F::ZERO; 4];
     for i in 0..4 {
@@ -55,6 +56,7 @@ pub fn addr_from(b: &[u8; 32]) -> Result<[F; 4]> {
     }
     Ok(a)
 }
+/// an address as four integers, for use as a map key
 fn akey(a: &[F; 4]) -> [u64; 4] {
     a.map(|x| x.to_canonical_u64())
 }
@@ -79,6 +81,7 @@ pub struct Params {
     pub read: crate::reading::ReadParams,
 }
 impl Params {
+    /// parameters of the single-chain developer network (chain id 3 = Jen, easy difficulty, short windows). Not the public testnet's values: those come from net.conf.
     pub fn devnet() -> Self {
         Params {
             chain: 3,
@@ -101,10 +104,12 @@ impl Params {
 
 /// Checks that a stamp proves a block's public values.
 pub trait StampVerifier {
+    /// Ok when `stamp` proves the block's public values. This is the node's only view of the zero-knowledge proof.
     fn verify(&self, pubvalues: &[u64], stamp: &[u8]) -> Result<()>;
 }
 /// Makes the stamp for a block the builder has arranged (the leaves) and replayed (the public values).
 pub trait StampMaker: Send + Sync {
+    /// make the stamp for a block being built on `pre` (the builder's side; a node that only checks blocks never calls this)
     fn stamp(
         &self,
         pre: &Chain,
@@ -123,6 +128,8 @@ pub trait StampMaker: Send + Sync {
 /// about which bytes must travel with a block.
 pub struct DevStamp;
 impl DevStamp {
+    /// the stand-in stamp: a SHA-256 of the public values under the label "Zen-dev-stamp". It proves NOTHING; it lets the rules, network
+    /// and wallets be tested without the prover. A network that accepts `DevStamp` is only as safe as every node replaying every block.
     pub fn make(pubvalues: &[u64]) -> Vec<u8> {
         let mut h = Sha256::new();
         h.update(b"Zen-dev-stamp");
@@ -134,6 +141,7 @@ impl DevStamp {
 }
 pub struct DevStampMaker;
 impl StampMaker for DevStampMaker {
+    /// stand-in stamp of the public values (ignores the block content)
     fn stamp(
         &self,
         _pre: &Chain,
@@ -147,6 +155,7 @@ impl StampMaker for DevStampMaker {
     }
 }
 impl StampVerifier for DevStamp {
+    /// recompute the stand-in stamp and compare
     fn verify(&self, pubvalues: &[u64], stamp: &[u8]) -> Result<()> {
         if stamp != DevStamp::make(pubvalues).as_slice() {
             bail!("stamp does not match the public values");
@@ -166,6 +175,7 @@ pub struct Block {
     pub tickets: Vec<Ticket>,
 }
 
+/// commitment to the block's tickets: SHA-256 over the label "Zen-tickets-v1" and each ticket's 105 bytes in order
 pub fn tickets_root(ts: &[Ticket]) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(b"Zen-tickets-v1");
@@ -174,6 +184,7 @@ pub fn tickets_root(ts: &[Ticket]) -> [u8; 32] {
     }
     h.finalize().into()
 }
+/// the coinbase a miner hashes: magic | chain | height | extranonce | miner address (see seal.rs)
 pub fn coinbase_for(chain: u8, h: u64, extranonce: &[u8], miner: &[F; 4]) -> Vec<u8> {
     let mut v = seal::coinb1(chain, h, extranonce.len());
     v.extend(extranonce);
@@ -201,6 +212,7 @@ impl Block {
             ..self.clone()
         })
     }
+    /// this block's body root (public values, stamp, block data, tickets), which the sealed header commits to through the coinbase
     pub fn body_root(&self) -> [u8; 32] {
         seal::body_root(
             &self.pubvalues,
@@ -209,9 +221,11 @@ impl Block {
             &tickets_root(&self.tickets),
         )
     }
+    /// the block hash = the hash of its 80-byte header
     pub fn hash(&self) -> [u8; 32] {
         self.header.hash()
     }
+    /// the wire and disk form of a block
     pub fn encode(&self) -> Vec<u8> {
         let mut v = BLOCK_MAGIC.to_vec();
         v.extend(self.header.bytes());
@@ -231,6 +245,8 @@ impl Block {
         }
         v
     }
+    /// parse a block from untrusted bytes. Every length is read from the input and checked against what is left; trailing bytes are an error.
+    /// REVIEW: a fuzzing target (listed as open in docs/SECURITY-REVIEW.md).
     pub fn decode(b: &[u8]) -> Result<Block> {
         let mut p = 0usize;
         let mut take = |n: usize| -> Result<&[u8]> {
@@ -373,6 +389,7 @@ pub fn free_index(taken: &dyn Fn(u64) -> bool, addr: &[F; 4]) -> u64 {
     }
     i
 }
+/// a fresh account leaf holding `bal` (nonce 0, "counts once" fields at their start values)
 fn dummy_acct(pk: [F; 4], bal: u64) -> Acct {
     Acct {
         pk,
@@ -390,6 +407,7 @@ fn dummy_acct(pk: [F; 4], bal: u64) -> Acct {
         k: [0; 4],
     }
 }
+/// the "previous block" hash of block 1 on a chain: SHA-256 of "Zen-genesis-v1" and the chain id
 pub fn genesis_hash(chain: u8) -> [u8; 32] {
     Sha256::digest([b"Zen-genesis-v1".as_slice(), &[chain]].concat()).into()
 }
@@ -921,6 +939,8 @@ impl Chain {
         self.tip_ntime = blk.header.ntime;
     }
 
+    /// validate a block on top of this chain, append it to the block log (unless ZEN_NOLOG is set) and commit it. Validation runs fully
+    /// before anything is written.
     pub fn accept(&mut self, blk: &Block, now: u32) -> Result<()> {
         let ap = self.validate(blk, now)?;
         if let Some(store) = &self.log {
@@ -957,10 +977,12 @@ impl Chain {
     pub fn idx_of(&self, addr: &[F; 4]) -> Option<u64> {
         self.idx.get(&akey(addr)).copied()
     }
+    /// the tree index and the account of an address, if it has one
     pub fn account(&self, addr: &[F; 4]) -> Option<(u64, &Acct)> {
         let i = *self.idx.get(&akey(addr))?;
         self.state.get(&i).map(|a| (i, a))
     }
+    /// the current state root as four integers
     pub fn root(&self) -> [u64; 4] {
         self.tree.root().elements.map(|x| x.to_canonical_u64())
     }
@@ -1039,6 +1061,7 @@ pub fn network_id_of(p: &Params, gd: &[u8; 32]) -> [u8; 32] {
     h.update(Chain::snap_binding(p, gd));
     h.finalize().into()
 }
+/// a hash of the genesis allocation (addresses and balances in order); part of the network id, so two networks with different genesis never mix
 pub fn genesis_digest(genesis: &[([F; 4], u64)]) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(b"Zen-genesis-allocation-v1");
@@ -1051,12 +1074,15 @@ pub fn genesis_digest(genesis: &[([F; 4], u64)]) -> [u8; 32] {
     h.finalize().into()
 }
 impl Node {
+    /// the id peers compare at handshake: consensus parameters plus genesis digest
     pub fn network_id(&self) -> [u8; 32] {
         network_id_of(&self.g0.p, &self.gd)
     }
+    /// state root of the genesis state
     pub fn genesis_root(&self) -> [u64; 4] {
         self.g0.root()
     }
+    /// open a node with the default reorg depth and snapshot interval (see `open_with`)
     pub fn open(
         p: Params,
         genesis: &[([F; 4], u64)],
@@ -1149,6 +1175,7 @@ impl Node {
             Arc::make_mut(c).cross = mode.clone();
         }
     }
+    /// forget every block and go back to genesis (used when the stored log cannot be replayed)
     fn fresh(&mut self) {
         let g = self.g0.clone();
         self.best = g.tip;
@@ -1205,6 +1232,7 @@ impl Node {
         }
         Ok(())
     }
+    /// test access to the snapshot file list
     #[cfg(test)]
     pub fn snapshot_files_for_test(dir: &Path) -> Vec<(u64, PathBuf)> {
         Node::snapshot_files(dir)
@@ -1265,6 +1293,7 @@ impl Node {
             Err(e) => eprintln!("snapshot at height {floor} not written: {e}"),
         }
     }
+    /// the state at the best block
     pub fn tip(&self) -> &Chain {
         &self.snaps[&self.best]
     }
@@ -1375,12 +1404,15 @@ impl Node {
         let loc = *self.index.get(h)?;
         Block::decode(&self.log.as_ref()?.read(loc).ok()?).ok()
     }
+    /// true when the block is already known, on a chain or waiting as an orphan
     pub fn have(&self, h: &[u8; 32]) -> bool {
         self.heights.contains_key(h) || self.orphans.iter().any(|o| o.hash() == *h)
     }
+    /// height of a known block (panics if unknown: callers check `have` first)
     fn height_of(&self, h: &[u8; 32]) -> u64 {
         self.heights[h]
     }
+    /// height of the best block
     pub fn height(&self) -> u64 {
         self.main.len() as u64 - 1
     }
@@ -1483,6 +1515,7 @@ impl Node {
         self.reorgs.push(depth);
         Ok(Added::Reorg(depth))
     }
+    /// drop state snapshots deeper than `max_reorg` below the tip; after this the node can no longer reorganise past that depth
     fn prune(&mut self) {
         let bh = self.height();
         if bh <= self.max_reorg {
@@ -1537,6 +1570,7 @@ impl Node {
         }
         Ok(Outcome { main, attached })
     }
+    /// route one incoming block: already known, stale (too deep), orphan (parent unknown) or connectable, and in the last case validate and attach it
     fn process(&mut self, blk: &Block, now: u32) -> Result<Added> {
         match self.lookup(blk) {
             Lookup::Known => Ok(Added::Known),
@@ -1594,6 +1628,7 @@ pub mod dev {
         build_template_ops(chain, miner, tickets, pays, &[], ntime, maker)
     }
     pub use crate::locks::OpReq;
+    /// build a candidate block on `chain` with these tickets, payments and operations, paying `miner` (used by the pool, the devnet and tests)
     pub fn build_template_ops(
         chain: &Chain,
         miner: [F; 4],
@@ -2216,6 +2251,7 @@ pub mod dev {
         pub maker: Arc<dyn StampMaker>,
     }
     impl Devnet {
+        /// a developer network with stand-in stamps
         pub fn new(dir: Option<&Path>, wallets: usize) -> Result<Devnet> {
             Devnet::with(dir, wallets, Box::new(DevStamp), None)
         }
@@ -2279,6 +2315,7 @@ pub mod dev {
         pub maker: Arc<dyn StampMaker>,
     }
     impl crate::p2p::TemplateSource for DevSource {
+        /// the next candidate block for the devnet miner
         fn template(&self, tip: &Chain) -> Result<Block> {
             let tickets = make_tickets(
                 tip,
@@ -2322,6 +2359,7 @@ pub mod dev {
         pub wall_clock: bool,
     }
     impl crate::p2p::TemplateSource for PoolSource {
+        /// the next candidate block for the pool: tickets from its minters, payments and operations from the pools, real or stand-in stamp
         fn template(&self, tip: &Chain) -> Result<Block> {
             let tickets = make_tickets(
                 tip,
@@ -2371,6 +2409,7 @@ pub mod dev {
             }
         }
     }
+    /// deterministic TEST keys (secret = 1,000,003 + 7,919*i). Anyone can derive them: never use outside a test network.
     pub fn devnet_keys(wallets: usize) -> Vec<mint::Key> {
         (0..wallets)
             .map(|i| {
@@ -2378,6 +2417,7 @@ pub mod dev {
             })
             .collect()
     }
+    /// give each test key 1,000,000,000 base units at genesis
     pub fn genesis_of(keys: &[mint::Key]) -> Vec<([F; 4], u64)> {
         keys.iter().map(|k| (k.addr, 1_000_000_000)).collect()
     }
@@ -2643,6 +2683,7 @@ pub fn serve_main() -> Result<()> {
     }
 }
 
+/// `zenproof node devnet [blocks]`: mine a short single-chain run in one process and print what was checked
 pub fn devnet_main() -> Result<()> {
     let blocks: usize = std::env::args()
         .nth(3)

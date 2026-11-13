@@ -102,6 +102,8 @@ fn order_addr(
     ]);
     hash_t(b, v)
 }
+/// BUILD THE ORDER-FAMILY CIRCUIT (make, reserve, bid, reopen, return, claim; auctions), padded to the common leaf shape.
+/// NOT in the circuit by design: the foreign payment proof of a claim is checked by every node (see docs/PROOFS-PLAN.md, P5).
 pub fn build_order(
     chain: u64,
     prm: &ec::Params,
@@ -586,6 +588,7 @@ pub struct OrderInput<'a> {
     pub sender_a: ec::P,
     pub sender_sig: (u128, BigUint),
 }
+/// fill every target of the order leaf from the node's replay; an operation touches at least the sender and the order
 pub fn set_witness(l: &OrderLeaf, pw: &mut PartialWitness<F>, inp: &OrderInput) -> Result<()> {
     use crate::locks::{Dest, Op, OrderState, Terms};
     let t = &l.t;

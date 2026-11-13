@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 pub const PROOF_BYTES: usize = 196;
 pub const COMMITMENT_DST: &[u8] = b"bsb22-commitment";
 
+/// a base-field element from big-endian bytes; a value at or above the modulus is refused (one encoding per element)
 fn fq_from(b: &[u8]) -> Result<Fq> {
     let v = Fq::from_be_bytes_mod_order(b);
     if v.into_bigint().to_bytes_be() != b {
@@ -28,6 +29,7 @@ fn fq_from(b: &[u8]) -> Result<Fq> {
     }
     Ok(v)
 }
+/// gnark's compressed-point header: the top two bits of the first byte are the flag (1 = infinity, 2 / 3 = which y), the rest is x
 fn split_flag(b: &[u8]) -> (u8, Vec<u8>) {
     let mut c = b.to_vec();
     let f = c[0] >> 6;
@@ -35,6 +37,7 @@ fn split_flag(b: &[u8]) -> (u8, Vec<u8>) {
     (f, c)
 }
 
+/// decode a compressed G1 point (32 bytes, gnark format). Checks: length, canonical x, on the curve, in the prime-order group; infinity must be all zeros.
 pub fn g1_from(b: &[u8]) -> Result<G1Affine> {
     if b.len() != 32 {
         bail!("a G1 point is 32 bytes");
@@ -59,6 +62,7 @@ pub fn g1_from(b: &[u8]) -> Result<G1Affine> {
         _ => bail!("not a compressed G1 point"),
     }
 }
+/// decode a compressed G2 point (64 bytes, gnark format: x.a1 then x.a0). Same checks as `g1_from`; the subgroup check matters on G2, whose cofactor is not 1.
 pub fn g2_from(b: &[u8]) -> Result<G2Affine> {
     if b.len() != 64 {
         bail!("a G2 point is 64 bytes");
@@ -84,6 +88,7 @@ pub fn g2_from(b: &[u8]) -> Result<G2Affine> {
         _ => bail!("not a compressed G2 point"),
     }
 }
+/// a G1 point as gnark's 64 uncompressed bytes (x, y big-endian); this is the byte string the commitment hash is taken over
 fn g1_uncompressed(p: &G1Affine) -> [u8; 64] {
     let mut o = [0u8; 64];
     if p.is_zero() {
@@ -135,6 +140,7 @@ struct Reader<'a> {
     p: usize,
 }
 impl<'a> Reader<'a> {
+    /// the next `n` bytes or "truncated". REVIEW: `self.p + n` is an unchecked addition; `n` comes from a u32 read from the key file.
     fn take(&mut self, n: usize) -> Result<&'a [u8]> {
         let s = self
             .b
@@ -143,6 +149,7 @@ impl<'a> Reader<'a> {
         self.p += n;
         Ok(s)
     }
+    /// a big-endian u32 length field
     fn u32(&mut self) -> Result<usize> {
         Ok(u32::from_be_bytes(self.take(4)?.try_into()?) as usize)
     }
@@ -156,6 +163,7 @@ pub struct Proof {
     pub pok: G1Affine,
 }
 impl Proof {
+    /// parse a 196-byte stamp: A (G1), B (G2), C (G1), a count that must be 1, the commitment (G1) and its proof of knowledge (G1)
     pub fn from_bytes(b: &[u8]) -> Result<Proof> {
         if b.len() != PROOF_BYTES {
             bail!("a stamp is {} bytes, not {}", b.len(), PROOF_BYTES);
@@ -193,6 +201,7 @@ pub struct Vk {
     ped_gsigma_neg: G2Affine,
 }
 impl Vk {
+    /// parse a gnark verifying key. The G1 copies of beta and delta are read (and point-checked) but not used. Exactly one commitment is expected.
     pub fn from_bytes(b: &[u8]) -> Result<Vk> {
         let mut r = Reader { b, p: 0 };
         let alpha = g1_from(r.take(32)?)?;
@@ -246,6 +255,8 @@ impl Vk {
         self.k.len() - 1 - self.committed.len()
     }
 
+    /// check one stamp against the public values. Steps: the number of inputs; the commitment's hash is appended as one more input;
+    /// the Pedersen proof of knowledge of the commitment; then the Groth16 pairing equation with the commitment added to the input sum.
     pub fn verify(&self, proof: &Proof, public: &[Fr]) -> Result<()> {
         if public.len() != self.public_len() {
             bail!(
@@ -328,6 +339,7 @@ pub struct Groth16Stamp {
     vk: Vk,
 }
 impl Groth16Stamp {
+    /// a stamp verifier for the given verifying-key bytes (the content of `zen.vk`)
     pub fn new(vk_bytes: &[u8]) -> Result<Groth16Stamp> {
         Ok(Groth16Stamp {
             vk: Vk::from_bytes(vk_bytes)?,
@@ -335,6 +347,7 @@ impl Groth16Stamp {
     }
 }
 impl StampVerifier for Groth16Stamp {
+    /// the node's entry point: parse the stamp, lift the public values into the BN254 scalar field, verify
     fn verify(&self, pubvalues: &[u64], stamp: &[u8]) -> Result<()> {
         let proof = Proof::from_bytes(stamp)?;
         let public: Vec<Fr> = pubvalues.iter().map(|v| Fr::from(*v)).collect();
