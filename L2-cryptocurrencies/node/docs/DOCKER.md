@@ -24,7 +24,7 @@ The tools are in the image: `docker exec zen zenproof wallet balance /data/net/w
 | `ZEN_NET_DIR`, `ZEN_BASE_PORT` | /data/net, 18440 | where the network files are, first port |
 
 ## Real proofs (optional)
-The image's stand-in stamps carry no proof. To stamp blocks with the real 196-byte Groth16 proof, set `ZEN_G16` to a folder holding `zen.pk`, `zen.r1cs` and `zen.vk` and `ZEN_WRAP` to the `zenwrap` prover (about 2 GB of keys and minutes per block on 2 cores; see `README.md`, Rounds 54–55). A node that only checks stamps needs `zen.vk` alone (`out_v7/zen.vk`). The current setup is single-party and for tests only.
+The image's stand-in stamps carry no proof. To stamp blocks with the real 196-byte Groth16 proof, set `ZEN_G16` to a folder holding `zen.pk`, `zen.r1cs` and `zen.vk` and `ZEN_WRAP` to the `zenwrap` prover (about 2 GB of keys and minutes per block on 2 cores; see `docs/BUILD-LOG.md`, Rounds 54–55). A node that only checks stamps needs `zen.vk` alone (`proof-artifacts/out_v7/zen.vk`). The current setup is single-party and for tests only.
 
 ## Security
 - Publish on the host's loopback (`127.0.0.1:` as above) unless you mean to open the node to a network. The API checks the Host name and a token for every write, but a testnet node is not hardened for the open internet.

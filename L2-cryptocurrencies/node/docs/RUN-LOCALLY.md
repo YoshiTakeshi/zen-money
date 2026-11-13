@@ -8,7 +8,7 @@ xcode-select --install                                   # compiler tools, if no
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
-Unzip the project, then `cd zkbench/zenproof`.
+Clone the repository, then `cd L2-cryptocurrencies/node`.
 
 ## 2. Build
 ```
@@ -44,9 +44,9 @@ About 25 minutes on 2 cores in the sandbox; expect less on an M4. Expected: 137 
 
 ## 5. Real Groth16 stamps (optional, heavy)
 Needs Go 1.26.8 or newer (`brew install go`) and about 6 GB of RAM for setup, 2 GB of disk for the proving key (your 24 GB is enough).
-1. Build the prover as in `../g16wrap/README.md` (apply the patch, copy `zenwrap/main.go`, `go build -o zenwrap ./cmd/zenwrap`).
-2. Make the key for the current circuit: the circuit files are in `out_v7/`; run `zenwrap compile` and `zenwrap setup` on that folder as in `README.md` (Round 54: about 17 minutes in the sandbox). The proving key is not in the zip (2 GB).
-3. Run the node with `ZEN_G16=<folder with zen.pk, zen.r1cs, zen.vk> ZEN_WRAP=<path to zenwrap> $Z node serve ...`. Each block then takes minutes to prove; `out_v7/zen.vk` alone is enough for a node that only checks stamps. This key is single-party and for testing only.
+1. Build the prover as in `../groth16-wrap/README.md` (apply the patch, copy `zenwrap/main.go`, `go build -o zenwrap ./cmd/zenwrap`).
+2. Make the key for the current circuit: the circuit files are in `proof-artifacts/out_v7/`; run `zenwrap compile` and `zenwrap setup` on that folder as in `README.md` (Round 54: about 17 minutes in the sandbox). The proving key is not in the zip (2 GB).
+3. Run the node with `ZEN_G16=<folder with zen.pk, zen.r1cs, zen.vk> ZEN_WRAP=<path to zenwrap> $Z node serve ...`. Each block then takes minutes to prove; `proof-artifacts/out_v7/zen.vk` alone is enough for a node that only checks stamps. This key is single-party and for testing only.
 Skip this part unless you want to see real stamps; steps 1 to 4 test the rules, wallets, channels, orders and the network.
 
 ## 6. Keep it running 24/7 and have your own wallet
@@ -65,7 +65,7 @@ Test coins come from the test wallets in `~/zen/net/wallets/` (for example `w0.k
 **Start by itself and restart after a crash or reboot (launchd):**
 ```
 mkdir -p ~/zen ~/Library/LaunchAgents
-sed -e "s|REPLACE_ME|$(cd .. && pwd)|" -e "s|REPLACE_HOME|$HOME|" scripts/com.zen.node.plist > ~/Library/LaunchAgents/com.zen.node.plist
+sed -e "s|REPLACE_ME|$(pwd)|" -e "s|REPLACE_HOME|$HOME|" scripts/com.zen.node.plist > ~/Library/LaunchAgents/com.zen.node.plist
 launchctl load ~/Library/LaunchAgents/com.zen.node.plist
 ```
 Stop it with `launchctl unload ~/Library/LaunchAgents/com.zen.node.plist`; the log is `~/zen/zen.log`. The `caffeinate` in the file keeps the Mac from idle-sleeping while the node runs, but a closed lid or a battery drain still sleeps it: for true 24/7 keep it plugged in and set System Settings > Battery > Options > "Prevent automatic sleeping on power adapter when the display is off". Do not move the project folder after loading.

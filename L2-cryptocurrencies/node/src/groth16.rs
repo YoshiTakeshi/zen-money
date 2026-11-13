@@ -189,7 +189,7 @@ impl StampVerifier for Groth16Stamp {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    fn dir() -> PathBuf { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../g16wrap/result_v2") }
+    fn dir() -> PathBuf { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../groth16-wrap/result_v2") }
     /// gnark's public witness file: u32 public, u32 secret, u32 length, then 32-byte big-endian elements
     fn read_pub(p: &std::path::Path) -> Vec<Fr> {
         let b = std::fs::read(p).unwrap();
@@ -246,7 +246,7 @@ mod tests {
     #[test]
     fn a_stamp_of_a_current_block_verifies_under_the_current_key() {
         // version-6 setup: the peg circuit, a fresh single-party Groth16 setup, a block proved with it
-        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../g16wrap/result_v6");
+        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../groth16-wrap/result_v6");
         let Ok(vkb) = std::fs::read(d.join("zen.vk")) else { println!("result_v6 not present: skipped"); return };
         let raw = std::fs::read(d.join("zen.proof")).unwrap();
         assert_eq!(raw.len(), 196);

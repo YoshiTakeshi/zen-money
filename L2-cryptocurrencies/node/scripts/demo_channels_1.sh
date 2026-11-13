@@ -1,5 +1,5 @@
 set -e
-cd /home/claude/zkbench/zenproof
+cd "$(dirname "$0")/.."
 Z=target/release/zenproof; W=/tmp/t3/wallets; D=/tmp/chd
 rm -rf /tmp/t3 $D; mkdir -p $D
 $Z net init all /tmp/t3 >/dev/null

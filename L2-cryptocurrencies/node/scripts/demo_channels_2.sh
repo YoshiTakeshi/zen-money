@@ -1,4 +1,4 @@
-cd /home/claude/zkbench/zenproof
+cd "$(dirname "$0")/.."
 Z=target/release/zenproof; W=/tmp/t3/wallets; D=/tmp/chd
 mine(){ $Z node mine 127.0.0.1:$1 $2 2>&1 | grep RESULT; }
 bal(){ $Z wallet balance $W/$1.key $2 | cut -d'|' -f2; }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the three-chain test network and mines a block on each chain every ZEN_BLOCK_SECS seconds (stand-in stamps).
-# Data lives in ~/zen (change with ZEN_HOME): chains, test keys, wallets. Stop with Ctrl+C or `launchctl unload` (see MAC-TEST.md).
+# Data lives in ~/zen (change with ZEN_HOME): chains, test keys, wallets. Stop with Ctrl+C or `launchctl unload` (see docs/RUN-LOCALLY.md).
 set -u
 cd "$(dirname "$0")/.."
 Z="$PWD/target/release/zenproof"

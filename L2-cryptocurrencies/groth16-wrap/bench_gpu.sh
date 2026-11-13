@@ -7,9 +7,9 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DIR=${1:-$ROOT/bench_block}
 WRAP=${WRAP:-./zenwrap}
 echo "== cores: $(nproc) | GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo none)"
-( cd $ROOT/zenproof && RUSTC_BOOTSTRAP=1 cargo build --release -q )
+( cd $ROOT/node && RUSTC_BOOTSTRAP=1 cargo build --release -q )
 echo "== leaves, merges, shrink, BN254 layer (CPU, all cores)"
-( cd $ROOT/zenproof && BN_OUT=$DIR ./target/release/zenproof 16 8 | grep RESULT )
+( cd $ROOT/node && BN_OUT=$DIR ./target/release/zenproof 16 8 | grep RESULT )
 [ -f $DIR/zen.r1cs ] || { echo "== compile + setup (once)"; $WRAP compile $DIR; $WRAP setup $DIR; }
 echo "== Groth16 on the CPU"; $WRAP prove $DIR; $WRAP verify $DIR
 echo "== Groth16 on the GPU"; ZEN_ACCEL=cuda $WRAP prove $DIR; $WRAP verify $DIR

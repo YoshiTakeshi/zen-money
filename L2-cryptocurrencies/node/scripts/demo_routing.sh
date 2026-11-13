@@ -1,4 +1,4 @@
-cd /home/claude/zkbench/zenproof
+cd "$(dirname "$0")/.."
 Z=target/release/zenproof; W=/tmp/t3/wallets; R=/tmp/rt
 pkill -x zenproof; sleep 1
 rm -rf /tmp/t3 $R; mkdir -p $R

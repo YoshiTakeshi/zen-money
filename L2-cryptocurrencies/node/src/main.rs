@@ -585,7 +585,7 @@ fn seal_bench() -> Result<()> {
     let chain = CHAIN_ID as u8; let height = 101u64;
     let prev: [u8; 32] = sha2::Sha256::digest(b"Zen Jen block 100").into();
     // the minted block: the stamp's public values, the 196-byte stamp, the block data, the tickets root
-    let dir = std::env::var("BLOCK").unwrap_or("out_v4".into());
+    let dir = std::env::var("BLOCK").unwrap_or("proof-artifacts/out_v4".into());
     let data = std::fs::read(format!("{dir}/block.bin")).unwrap_or_else(|_| vec![4u8; 2401]);
     let pis: Vec<u64> = (0..16).map(|i| i * 7919).collect();
     let stamp = [9u8; 196];

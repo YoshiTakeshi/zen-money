@@ -49,24 +49,24 @@ Set CORRUPT=1 to forge one signature: Plonky2 refuses to prove, Groth16 proofs f
     | rate 8/10 56.6 KB (+27 s); verify 2-3 ms.
   Forged signature: prover stops ("Partition ... set twice"), no proof.
 
-## Groth16 wrap (fourth round) -> see g16wrap/README.md
+## Groth16 wrap (fourth round) -> see ../groth16-wrap/README.md
   Stamp of 128 payments -> one Groth16 proof on BN254: 196 bytes, verify 2.6 ms.
   Extra prover work per block: ~2 s + 80 s (BN254-Poseidon Plonky2 layer) + 92.5 s (Groth16).
 
-## Fixed block shape (fifth round) -> see g16wrap/README.md
+## Fixed block shape (fifth round) -> see ../groth16-wrap/README.md
   Padding slots (enabled flag) give every block the same circuits: blocks of 128 and of 77 payments
   proved and verified with ONE Groth16 key (196-byte proofs, ~2 ms verify).
 
-## Signature hardening + gnark v0.16.4 (sixth round) -> see g16wrap/README.md
+## Signature hardening + gnark v0.16.4 (sixth round) -> see ../groth16-wrap/README.md
   s mod n (canonical, 319-bit loop), canonical challenge, no exceptional cases in the DblAdd gate.
   Verifier ported to gnark v0.16.4: 4.2 M constraints, one key for blocks A and B, 196-byte proofs.
 
-## Block data and nonces (seventh round) -> see BLOCKS.md
+## Block data and nonces (seventh round) -> see ../node/docs/BLOCKS.md
   Proof commits to the payment data (data hash public value). Block of 128 payments = 1,632 B of
   payments + 112 B public values + 196 B proof = ~1.9 KB (~15 B per payment). Nodes rebuild the
   state from the bytes and must match the proof; a re-submitted signed payment gives no proof.
 
-## Version 2: leaf rules + universal merge (eighth round) -> see zenproof/README.md
+## Version 2: leaf rules + universal merge (eighth round) -> see ../node/docs/BUILD-LOG.md
   Chain id in signatures, fee floor (S/6, S/100), new accounts, closing, prover address in the data.
   Leaf and merge proofs share one circuit shape, so blocks of 8, 3 and 1 leaves end in the same final
   circuit: one Groth16 key proved and verified all three (196 B, about 3 ms).

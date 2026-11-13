@@ -17,7 +17,8 @@ plt.rcParams.update({
     'pdf.fonttype': 42, 'figure.dpi': 150,
 })
 W1, W2 = 3.3, 6.8  # single / double column widths, inches
-D = '/home/claude/whitepaper/'
+import os
+D = os.path.dirname(os.path.abspath(__file__)) + '/'   # this folder: reads data/*.json, writes figs/*.pdf
 S = json.load(open(D + 'data/series.json'))
 L = json.load(open(D + 'data/launch.json'))
 

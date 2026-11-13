@@ -4,7 +4,7 @@
   <key>Label</key><string>com.zen.node</string>
   <key>ProgramArguments</key><array>
     <string>/usr/bin/caffeinate</string><string>-i</string>
-    <string>/bin/bash</string><string>REPLACE_ME/zenproof/scripts/run-forever.sh</string>
+    <string>/bin/bash</string><string>REPLACE_ME/scripts/run-forever.sh</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

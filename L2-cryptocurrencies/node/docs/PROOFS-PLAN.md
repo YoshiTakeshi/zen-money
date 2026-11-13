@@ -1,7 +1,7 @@
 # Zen — real proofs for the new operations: findings and plan (Justus L. Ludovic)
 
 ## Where we are (updated round 55)
-All seven steps are done. Every operation (vaults, channels, orders including bids and the claim, factories; tags 1–18) is carried by the block proof: four operation leaf circuits, the universal merge, shrink, BN254 layer and Groth16 (196-byte stamp, vk 1008 bytes, files in `out_v7/`). Soundness tests (`soundness.rs`) try 583 rule-breaking witnesses without finding a circuit that proves what the node refuses.
+All seven steps are done. Every operation (vaults, channels, orders including bids and the claim, factories; tags 1–18) is carried by the block proof: four operation leaf circuits, the universal merge, shrink, BN254 layer and Groth16 (196-byte stamp, vk 1008 bytes, files in `proof-artifacts/out_v7/`). Soundness tests (`soundness.rs`) try 583 rule-breaking witnesses without finding a circuit that proves what the node refuses.
 Open before any launch: (1) the Groth16 setup is single-party, a public multi-party ceremony for this exact circuit is needed; (2) the foreign payment proof of an order claim is checked by every node, not inside the circuit; (3) fuzzing of decoders, an outside audit, and the other later items (encrypted tower storage, tower payment, wider peer discovery, splicing).
 The sections below keep the original findings and plan as written at round 49; the Status list at the end is the record of what was done.
 

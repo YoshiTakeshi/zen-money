@@ -1,6 +1,7 @@
 #!/bin/bash
 # run a go command; whenever it fails on a missing module version, build it from GitHub and retry
-export GOPROXY=file:///home/claude/g16wrap/goproxy GOSUMDB=off GOFLAGS=-mod=mod GOTOOLCHAIN=local GONOSUMDB='*'
+HERE="$(cd "$(dirname "$0")/.." && pwd)"   # the groth16-wrap folder; the local module proxy is built in $HERE/goproxy
+export GOPROXY=file://$HERE/goproxy GOSUMDB=off GOFLAGS=-mod=mod GOTOOLCHAIN=local GONOSUMDB='*'
 GO=${GO:-go}
 for i in $(seq 1 60); do
   out=$($GO "$@" 2>&1); rc=$?
@@ -10,8 +11,8 @@ for i in $(seq 1 60); do
   if [ -z "$miss" ]; then echo "$out" | tail -20; exit 1; fi
   : > /tmp/need.sum
   for m in $miss; do echo "${m%@*} ${m#*@} h1:x" >> /tmp/need.sum; done
-  before=$(find /home/claude/g16wrap/goproxy -name '*.zip' | wc -l)
-  python3 /home/claude/g16wrap/tools/goproxy.py /home/claude/g16wrap/goproxy /tmp/need.sum | grep -v '^ok'
-  after=$(find /home/claude/g16wrap/goproxy -name '*.zip' | wc -l)
+  before=$(find "$HERE/goproxy" -name '*.zip' | wc -l)
+  python3 "$HERE/tools/goproxy.py" "$HERE/goproxy" /tmp/need.sum | grep -v '^ok'
+  after=$(find "$HERE/goproxy" -name '*.zip' | wc -l)
   if [ "$before" = "$after" ]; then echo "no progress:"; echo "$out" | tail -20; exit 1; fi
 done

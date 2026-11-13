@@ -7,13 +7,13 @@ Pipeline (one block = one stamp, fixed shape: 8 leaves x 16 payment slots):
   -> Groth16 on BN254 (gnark v0.16.4): verifies the whole BN254-layer proof inside the circuit
 The Plonky2 proof is a PRIVATE witness; the verifier key of the Plonky2 circuit is fixed in the
 circuit; the 14 stamp values (root before 4, root after 4, fee total, payment count, block-data hash 4)
-are public. The block format and node checks are in ../BLOCKS.md.
+are public. The block format and node checks are in ../node/docs/BLOCKS.md.
 
 ## Files
-- ../p2sigopt/src/ec.rs        signature circuit (EcGFp5 Schnorr, DblAdd gate, checks listed below)
-- ../p2sigopt/src/bn.rs        Plonky2 1.1 hasher/config "PoseidonBn254GoldilocksConfig" (same
+- ../benchmarks/p2sigopt/src/ec.rs        signature circuit (EcGFp5 Schnorr, DblAdd gate, checks listed below)
+- ../benchmarks/p2sigopt/src/bn.rs        Plonky2 1.1 hasher/config "PoseidonBn254GoldilocksConfig" (same
                                construction as gnark-plonky2-verifier's poseidon/bn254.go)
-- ../p2sigopt/src/main.rs      blocks with padding slots; exports the BN254-layer proof as JSON
+- ../benchmarks/p2sigopt/src/main.rs      blocks with padding slots; exports the BN254-layer proof as JSON
                                (env BN_OUT, BN_RATE, BN_QUERIES, REAL, SEED)
 - zenwrap/main.go              gnark program: compile | setup | prove | verify | test | gates | chal
 - gnark-plonky2-verifier-zen.patch   against succinctlabs/gnark-plonky2-verifier @ 7025b2e (Feb 2024):
@@ -28,7 +28,7 @@ are public. The block format and node checks are in ../BLOCKS.md.
                                     vk, Solidity verifier, logs)
 
 ## Build / run
-  cd p2sigopt && RUSTC_BOOTSTRAP=1 cargo build --release
+  cd ../benchmarks/p2sigopt && RUSTC_BOOTSTRAP=1 cargo build --release
   NO_SHRINK=1 BN_RATE=6 BN_QUERIES=14 BN_OUT=blockA ./target/release/p2sigopt 16 8
   SEED=2 REAL=77 NO_SHRINK=1 BN_RATE=6 BN_QUERIES=14 BN_OUT=blockB ./target/release/p2sigopt 16 8
   git clone https://github.com/succinctlabs/gnark-plonky2-verifier gpv && cd gpv && git checkout 7025b2e
@@ -85,7 +85,7 @@ code; it scales with cores (~10 s on 16 cores) or a GPU.
   apply to this circuit.
 - s mod n is now canonical, but this is still a benchmark signature scheme, not an audited one.
 
-## Block data (seventh round) -> see ../BLOCKS.md
+## Block data (seventh round) -> see ../node/docs/BLOCKS.md
 The leaf circuits hash their slot entries [enabled, sender, receiver, amount, fee] and the merges
 hash pairs, so the proof commits to the published payment data (public values 11-14). Real payments
 must be a prefix of each leaf. result/block*/block.bin are the published bytes; the program rebuilds

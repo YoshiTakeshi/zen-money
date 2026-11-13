@@ -1,5 +1,5 @@
 # Status (round 55)
-Every operation is proved: four leaf circuits (vault, channel, order incl. claim, factory), universal merge, shrink, BN254 layer, Groth16. Current verifying key: `out_v7/zen.vk` (older keys, e.g. `out_v6`, do not accept current blocks). Soundness battery: `src/soundness.rs`. Plan and open items: `PROOFS-PLAN.md`; security notes: `SECURITY-REVIEW.md`. Not for real value yet: single-party Groth16 setup, foreign payment proof checked by nodes only.
+Every operation is proved: four leaf circuits (vault, channel, order incl. claim, factory), universal merge, shrink, BN254 layer, Groth16. Current verifying key: `proof-artifacts/out_v7/zen.vk` (older keys, e.g. `proof-artifacts/out_v6`, do not accept current blocks). Soundness battery: `src/soundness.rs`. Plan and open items: `PROOFS-PLAN.md`; security notes: `SECURITY-REVIEW.md`. Not for real value yet: single-party Groth16 setup, foreign payment proof checked by nodes only.
 
 ---
 
@@ -7,7 +7,7 @@ Every operation is proved: four leaf circuits (vault, channel, order incl. claim
 Minters: phones/PCs (CPU). Builder, in practice a mining pool: state leaves, merges, BN254 layer on
 server CPU cores, the final Groth16 stamp on an NVIDIA GPU (gnark's ICICLE backend: same proving key,
 same 196-byte proof, same verifier). Miners: SHA-256 ASICs over Stratum. GPU prover code, build steps
-and a one-command benchmark for a rented GPU server: ../g16wrap/BUILDER-GPU.md, bench_gpu.sh,
+and a one-command benchmark for a rented GPU server: ../groth16-wrap/BUILDER-GPU.md, bench_gpu.sh,
 zenwrap/accel_icicle.go. It compiles and links here; GPU timings still to be measured.
 
 ---
@@ -31,7 +31,7 @@ if its credits, in order, are that list; the proof checks that each one reached 
   that already has one (node rule).
 - Circuit cost: none visible. The state leaf still fits 2^13 rows (2.70 s); merges 2.65 s.
 
-Measured (16 x 8, DOUBLESPEND=1 REPLAY=1, POOL=3,200,000, log run_v4_16x8.txt): 112 signed payments,
+Measured (16 x 8, DOUBLESPEND=1 REPLAY=1, POOL=3,200,000, log logs/run_v4_16x8.txt): 112 signed payments,
 110 applied, 2 skipped; leaf 7 credit-only with 11 credits (3 rewards incl. one creating the ticket
 minter's account, 7 prover shares, the miner's cut); fee pool 3,200,000 -> 8,126,656. Node replay
 matches all 16 public values and the payout list. Rejected: one changed byte, S + 1, a node expecting
@@ -41,7 +41,7 @@ another miner, and a builder paying one unit too much (OVERPAY=1: its proof is v
 Same final circuit size, new constants (the merge key changed): gnark v0.16.4, 4,203,150 constraints,
 test engine satisfied; setup 1,246 s (proving key 2.0 GB, verifying key 1,008 B); prove 96.1 s; the
 stamp is 196 bytes and verifies in 2.6 ms. The same stamp checked against another block's public
-values: rejected. Files: ../g16wrap/result_v4 (log, verifying key, proof, Solidity verifier).
+values: rejected. Files: ../groth16-wrap/result_v4 (log, verifying key, proof, Solidity verifier).
 
 ## 3. The seal works with standard SHA-256 hardware and Stratum v1 pools (src/seal.rs, `zenproof seal`)
 - Header: Bitcoin's 80 bytes, little-endian, SHA256d, compact nbits target. Test: our code gives
@@ -55,7 +55,7 @@ values: rejected. Files: ../g16wrap/result_v4 (log, verifying key, proof, Solidi
   big-endian hex fields) builds the coinbase and header and finds a share; the node rebuilds it and
   accepts it, paying the pool's address. Rejected: the seal reused for a changed block, the miner
   address swapped after solving, the seal shown to another chain, a version outside BIP 320, easier
-  bits than asked, a wrong nonce. Log: run_seal.txt.
+  bits than asked, a wrong nonce. Log: logs/run_seal.txt.
 - Changes from the Go devnet: the time is the header's ntime in seconds (no ms field), the miner address
   lives in the coinbase, and difficulty uses Bitcoin's compact bits (difficulty 1 = 0x1d00ffff).
 
@@ -87,7 +87,7 @@ Measured (2-core server, one core, native Rust): sign 1.2 ms, Argon2id 84 ms, ab
 node check of a ticket 1.7 ms + one Argon2id (about 75 ms), so 24 tickets cost about 1.8 s of one
 core per 2.5-minute block. Rejected: changed nonce, same ticket on another chain, on another round,
 another key swapped in, a key with an order-2 part, a payment signature passed off as a blow, a
-blow above the target. Unit tests: `cargo test --release mint::` (3 pass). Log: run_mint.txt.
+blow above the target. Unit tests: `cargo test --release mint::` (3 pass). Log: logs/run_mint.txt.
 
 Not yet in Rust: tickets inside blocks and the state (credentials, leaf quota, minters' pool), the
 node and the network; those come with the Rust node.
@@ -137,7 +137,7 @@ applied payments need not fill the first slots once some are skipped.
 - Groth16: the BN254 layer has the same size (2^12) but new constants (the merge key changed), so the
   final Groth16 circuit needs a new setup (about 20 min); not rerun in this round.
 
-  DOUBLESPEND=1 REPLAY=1 BN_OUT=out_v3 ./target/release/zenproof 16 8   (log: run_v3_16x8.txt)
+  DOUBLESPEND=1 REPLAY=1 BN_OUT=proof-artifacts/out_v3 ./target/release/zenproof 16 8   (log: logs/run_v3_16x8.txt)
   TAMPER=1 / CORRUPT=1 ./target/release/zenproof 4 2
 
 ---
@@ -183,7 +183,7 @@ and check that their common circuit data are identical (it took one rebuild).
   37 B), 824 B for B, 175 B for C. The node replay matches root, fees, count, data hash, S and height
   in all three; one changed byte, or a wrong S, is rejected.
 - Forged signature (CORRUPT=1) and replayed payment (REPLAY=1): no proof.
-- Groth16: see ../g16wrap/result_v2 (one setup, three block sizes).
+- Groth16: see ../groth16-wrap/result_v2 (one setup, three block sizes).
 
 ## Run
   RUSTC_BOOTSTRAP=1 cargo build --release
@@ -191,7 +191,7 @@ and check that their common circuit data are identical (it took one rebuild).
   env: REAL (payments), SEED, S, HEIGHT, NEWACC (every k-th payment to a new address), CLOSE (the k-th
   payment closes its sender), CORRUPT, REPLAY, BN_RATE/BN_QUERIES/BN_POW
 
-## Groth16, one key for three block sizes (result in ../g16wrap/result_v2)
+## Groth16, one key for three block sizes (result in ../groth16-wrap/result_v2)
 | | constraints | setup | block A (8 leaves) | block B (3 leaves) | block C (1 leaf) |
 | gnark v0.16.4 | 4,203,150 (16 public values) | 20.4 min, pk 2.0 GB, vk 1,008 B | 93.8 s, 196 B, verify 3.4 ms | 95.4 s, 196 B, verify 2.9 ms | 96.6 s, 196 B, verify 2.5 ms |
 Block C's proof against block A's public values: rejected. Test engine: all three satisfied.
@@ -201,7 +201,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - Each block's minter share goes straight to that block's winning tickets (reward from block h-2, as before).
   No owed ledger, no per-address state. TARGET_BLOWS is now 24, so a block never spends more than 24 credits
   on minters, whether there are 100 minters or a billion: more minters only raise the difficulty.
-- `zenproof payouts` (run_payouts.txt): credits per block 18 to 24 from 100 up to 300,000 simulated minters;
+- `zenproof payouts` (logs/run_payouts.txt): credits per block 18 to 24 from 100 up to 300,000 simulated minters;
   pay follows work (top 1% of minters get 0.356 of the pay for 0.352 of the work).
 - Cost: a small solo minter wins rarely (about one ticket in `minters / 24` blocks). Steady income comes from
   minting pools, which are ordinary addresses paying out with ordinary payments.
@@ -225,7 +225,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
   2^13. A cheaper Merkle-path step (3 arithmetic operations per pair instead of 4) took it back to 8,043 gates, 2^13 rows.
   Timings unchanged: state leaf 2.63 s, merge 2.67 s, shrink 1.5 s, BN254 layer 85 s.
 - Tests: 3 unit tests (loop counts once per period; fresh-first spending; invariants rest <= bal, used <= rest over 5,000
-  random steps); run_v5_peg_16x8.txt (PEGMIX=1 HEIGHT=4000: genesis accounts with maturing, immature, used and expired-used
+  random steps); logs/run_v5_peg_16x8.txt (PEGMIX=1 HEIGHT=4000: genesis accounts with maturing, immature, used and expired-used
   money): proof verifies, node replay matches the proof and the builder's counted amounts. PEGCHEAT=1 (builder claims
   more rested money than the leaf holds) gives no proof.
 - Balances are now below 2^62 in the circuit (was 2^63), so comparisons fit in one 63-bit split.
@@ -243,7 +243,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - `Block::encode/decode` (bounded sizes), `blocks.log` (length-prefixed), restart replays and fully re-validates the log.
 - `audit()`: balances + fee pool + rewards owed = genesis + everything issued, and the peg invariants hold, after every block.
 - Devnet: 12 wallets, tickets made with the real memory-hard blow (64 MB Argon2id), random payments, credits placed by the builder,
-  a one-thread miner at an easy seal difficulty (run_node_devnet.txt): 12 blocks, supply exact, restart gives the identical state.
+  a one-thread miner at an easy seal difficulty (logs/run_node_devnet.txt): 12 blocks, supply exact, restart gives the identical state.
   Checking a block costs about 2 s, nearly all of it 24 Argon2id calls (about 75 ms each; they can run in parallel).
 - Tests (3 new): a block is rejected for each of 13 faults (previous block, time, time ahead, seal target, body changed after
   sealing, no tickets, same blow twice, ticket from another block, one credit one unit too high, block data changed, public values
@@ -270,7 +270,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
   only Stratum.
 - Tests (3 new): fork choice + out-of-order orphans + a reorg of depth 1 + an invalid block refused + duplicate block;
   two nodes syncing four blocks over TCP and following a fifth, a node on another chain dropped; a Stratum-only miner seals two
-  blocks and a second node follows them. Live run (run_node_net.txt): `zenproof node serve` x2 (the second connected to the
+  blocks and a second node follows them. Live run (logs/run_node_net.txt): `zenproof node serve` x2 (the second connected to the
   first) and `zenproof node mine`: 4 blocks sealed through Stratum, both nodes at the same tip.
 - Run it: `zenproof node serve <p2p addr> <stratum addr> [peer addr]` (set ZEN_DIR for a block log), `zenproof node mine <stratum addr> [blocks]`.
 - Not in stage 2: share difficulty below the block target and `mining.set_difficulty` (a real ASIC farm needs them); the exact
@@ -290,7 +290,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - Test `real_stamps_are_verified_by_the_node`: a 20-payment block (2 leaves, real signatures and proofs) proved in 26.5 s on
   2 cores and checked by the node in 1.7 s (tickets, replay and stamp); a stamp that proves another block, a damaged stamp, a
   truncated stamp and a DevStamp-style fake are all refused; the honest block goes in; supply and peg invariants hold.
-- Live run (run_node_real.txt): `ZEN_REAL=1 zenproof node serve ...` x2 and `zenproof node mine`: a Stratum-only miner sealed 2
+- Live run (logs/run_node_real.txt): `ZEN_REAL=1 zenproof node serve ...` x2 and `zenproof node mine`: a Stratum-only miner sealed 2
   blocks carrying real stamps, the second node verified and followed both (about 22 s per block, almost all of it the pool proving).
 - Not yet: the Groth16 stamp verifier in the node (the gnark proof and key are produced by the Go tool; a Rust verifier needs
   BN254 pairings and the Pedersen commitment check of gnark's key); a second implementation of the verifier for cross-checking;
@@ -312,7 +312,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - Tests: log table spacing; the ratio is read to within 6%; S follows a 2x change in the true Sen value at the anchor's pace and
   stays inside the band; fee and cap rules; maximal push; chain test across a day boundary (S held inside the day, moved +9.6% toward a
   true value 20% higher, a second node replaying the blocks has the same S, anchor and state root, a block using the old S is refused).
-  All 27 tests pass (run_tests_round17.txt), including the real-stamp test with S in the proof.
+  All 27 tests pass (logs/run_tests_round17.txt), including the real-stamp test with S in the proof.
 - FINDING and decision on the anchor speed: with the first guess of 2.9% a day (0.005% a block) the hard bound was +34% in 7 days and
   +105% in 30 for unlimited money. Sweep (same rule, honest readings exact; days to be within 5% after a genuine change):
   anchor/day 2.9%: push +34% / +105%, +50% in 27 days, x2 in 47; 1.5%: +22% / +72%, 27, 47; 1.0%: +18% / +48%, 27, 55;
@@ -343,9 +343,9 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - The pool (`PoolSource`) takes its payments from the mempool. With real stamps the signed payments go to the prover's store and
   `prove_sig` uses the wallet's own signature (R = sG - eA recomputed); only if there is none does it sign with a devnet key it holds.
 - CLI: `zenproof wallet new|devnet|address|balance|pay`, `zenproof node serve` (now stage 4: a node with mempool and pool).
-  run_wallet.txt: a fresh wallet gets two queued payments from a devnet wallet, a mistyped address and an overspend are refused with
+  logs/run_wallet.txt: a fresh wallet gets two queued payments from a devnet wallet, a mistyped address and an overspend are refused with
   reasons, a Stratum miner seals the block, balances and nonces move, the new wallet pays on (its nonce 1,048,576 = 1 << 20).
-- Tests (35 pass, run_tests_round18.txt): signature round trip and every changed field breaking it; address checksum; wallet files
+- Tests (35 pass, logs/run_tests_round18.txt): signature round trip and every changed field breaking it; address checksum; wallet files
   (this found a real bug: secrets reduced mod the group order were 319 bits and did not fit four limbs); admission rules; RBF; full
   pool; selection order; blocks clearing the pool; wallet to mempool to block over TCP with a Stratum miner and a second node that
   heard the payments by relay and cleared its pool; a real-proof block where a wallet whose secret the pool does not hold pays with its
@@ -364,11 +364,11 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - Verification is gnark's, in its order: the commitment hash becomes a public input (RFC 9380 expand_message_xmd with SHA-256, DST
   "bsb22-commitment", over the commitment's 64 uncompressed bytes), the Pedersen proof of knowledge e(C, -GSigma) e(PoK, G) = 1, then
   e(A,B) = e(alpha,beta) e(L,gamma) e(C,delta) with L = K0 + sum x_i K_i + commitment. Built on ark-bn254 (arkworks 0.5).
-- Tests: expand_message_xmd against RFC 9380 vectors (K.1); the three real proofs of the version-2 setup (g16wrap/result_v2, blocks
+- Tests: expand_message_xmd against RFC 9380 vectors (K.1); the three real proofs of the version-2 setup (groth16-wrap/result_v2, blocks
   A, B, C, each with its own public witness) verify; block C's proof with block A's public values, any one of five changed public
   values, a bit flipped in each field of the proof (8 positions), a short proof, swapped A and C, swapped commitment and proof of
   knowledge, 15 public values, a changed value through the node interface: all rejected; the version-4 key and proof parse.
-  `zenproof g16verify <vk> <proof> <pub>` checks any gnark proof from the Go tool (run_groth16.txt).
+  `zenproof g16verify <vk> <proof> <pub>` checks any gnark proof from the Go tool (logs/run_groth16.txt).
 - Speed: about 4.2 ms per stamp in Rust (gnark's Go verifier measured 2.5 to 3.4 ms), single thread, 2 vCPU VM.
 - What this is not yet: the key it was tested against is the version-2 key. The current circuit (peg leaf, version 5) needs a new
   Groth16 setup (about 20 min, 6 GB, single party) before a Groth16 stamp of a current block exists, so no current block has been
@@ -381,13 +381,13 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
   proving key 2,007 MB, verifying key 1,008 bytes. Setup 1,164 s, peak 6.0 GB (needs about 12 GB swap on this 8 GB VM; the first try was
   killed for memory). Single party.
 - A real block (7 merge proofs, 112 payments, fee total 10,054,960) was proved: BN254 layer 81.6 s, Groth16 prove 89.2 s, proof 196 bytes.
-  Go verifies it in 2.0 ms; the Rust verifier in 4 to 7 ms (files in g16wrap/result_v6).
+  Go verifies it in 2.0 ms; the Rust verifier in 4 to 7 ms (files in groth16-wrap/result_v6).
 - Rust negatives: a changed proof byte, any one of the 16 public values changed (test covers all 16), alpha or K0 of the key changed
   all rejected; a changed G2 point of the key is refused at parsing; the version-2 key does not accept the current block.
   (A bit flipped in the key's unused G1 beta is not caught; the verifier does not use it, as in gnark.)
 - Test `a_stamp_of_a_current_block_verifies_under_the_current_key`; 39 tests in all.
 - Still open: the setup is single-party (public ceremony needed), no second verifier implementation, the node does not yet call the
-  Go prover; the pool would hand the 196 bytes to the node. Logs: run_export_v6.txt, g16wrap/blockC.*.log.
+  Go prover; the pool would hand the 196 bytes to the node. Logs: logs/run_export_v6.txt, groth16-wrap/blockC.*.log.
 
 ## Round 21: the pool makes Groth16 stamps, nodes check them with the Rust verifier (Justus L. Ludovic)
 - `prover::Groth16Maker` (a `StampMaker`): the Plonky2 shrink proof (as before) -> `BnLayer` (the BN254-Poseidon layer, built in Rust,
@@ -401,7 +401,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - Test `a_block_with_a_groth16_stamp_is_accepted_by_a_node_with_only_the_verifying_key` (runs only with ZEN_G16 and ZEN_WRAP set): a
   wallet's payment goes into a block, stamp of 196 bytes, accepted by a node holding only the verifying key (1.4 s with replay);
   a changed stamp byte, changed public values and the devnet's fake stamp are all refused. Whole path on this 2 vCPU machine:
-  195 s per block (Plonky2 merge and shrink, 82 s BN254 layer, Go prover including loading the 2 GB key). Log: run_g16_node.txt.
+  195 s per block (Plonky2 merge and shrink, 82 s BN254 layer, Go prover including loading the 2 GB key). Log: logs/run_g16_node.txt.
 - Not solved: 195 s per block is slower than the 150 s Bronze block time and on a CPU only; GPU proving and a long-running prover
   that keeps the key loaded (instead of one process per block) are the next speed items. Single-party setup still.
 
@@ -412,7 +412,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - Measured (2 vCPU, CPU only): first block 196 s, second block 171 s. Loading the key was only about 25 s of the 196; the rest is
   proving (Plonky2 merge and shrink, 82 s BN254 layer, about 90 s Groth16). So the persistent process helps a little; the time
   does not get below about 170 s on this machine. The real gains are on faster hardware (GPU for the BN254 layer and the Groth16
-  MSMs, more cores), which cannot be tested here. Log: run_g16_node_persistent.txt.
+  MSMs, more cores), which cannot be tested here. Log: logs/run_g16_node_persistent.txt.
 - Memory: the Go process keeps the proving key resident (about 3 GB, peak 6 GB while proving) next to the node's circuits; this machine needs swap.
 
 ## Round 23: node hardening (Justus L. Ludovic)
@@ -430,7 +430,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - Mempool: confirmed payments are remembered for 288 blocks (max 20,000) and go back into the pool if a reorg takes their block away.
 - `node serve` takes any number of peer addresses and keeps looking for more.
 - Tests added (8): validation outside the lock, pruning and stale forks, forward sync, bans (four kinds), limits and timeouts, discovery, Stratum
-  line limit, payments back after a reorg. 48 tests pass (run_tests_round23.txt).
+  line limit, payments back after a reorg. 48 tests pass (logs/run_tests_round23.txt).
 - Not done: bodies still all in memory, no persistent state tree, no defense against many-address attackers, limits not tuned on a real network.
   The wire format changed (hello has a port; new message types 9 to 11).
 
@@ -446,7 +446,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
   one year of raw rewards 7,197 / 129,031 / 1,025,830 g against the spec's 7,198 / 129,000 / 1,026,000; table increasing, antisymmetric, mean 0, variance 1;
   average V 1.12 / 1.47 / 2.04, geometric mean 1; miner keeps about 89% / 65% / 45%; payouts add up exactly (3 chains x 300 seals x 4 minter counts);
   a node test that the reward of block N equals the payouts from block N+1's seal, appears in block N+2, and different next blocks draw different factors.
-  9 new tests, 57 pass (run_tests_round24.txt).
+  9 new tests, 57 pass (logs/run_tests_round24.txt).
 - Finding: with V's average of 2.04, Jen's supply in picograms reaches about 1.45e19 after 100 years against 1.84e19 for u64 and for the Goldilocks
   field: a margin of 1.27. The unit, or the width of balances and of the supply audit, needs a decision before launch.
 - Open: no random factor for Yen's first blocks (spec decision 2), the maturity period (round 27 added it), the total supply width above.
@@ -460,7 +460,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
   years and 0.022 after ten thousand (Ken 1.45 million g, Yen 8,124 g). Costs: Yen's late rewards round more coarsely (940 ng at year 100, 34 ng at
   year 1,000: 0.1% and 3%, a few milligrams a century in total), and the smallest payment (1/6 Sen = 3.3 x 10^8 units) keeps room for a 0.01% fee.
 - Test `nanograms_keep_every_balance_in_range_for_ten_thousand_years` (ten years summed block by block, then the N^(1-a) growth; also asserts that
-  picograms would be past 2^62 within ten years). 58 tests pass (run_tests_round25.txt). The launch-order row ("previous chain's raw reward below 1 coin")
+  picograms would be past 2^62 within ten years). 58 tests pass (logs/run_tests_round25.txt). The launch-order row ("previous chain's raw reward below 1 coin")
   is in coins, not base units, and does not change.
 
 ## Round 26: Yen pays its first 100 blocks without a random factor (Justus L. Ludovic)
@@ -479,7 +479,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
   are the only ones a reorg can take back.
 - No new state: the held rewards sit in `pending`, keyed by the block that releases them, already persisted and counted by the supply audit.
 - Test `a_reward_is_held_for_the_maturity_period_and_then_credited` (maturity 3: nothing is released before block 6, block 6 releases block 1's reward, the
-  last four rewards are still held after block 9, audit exact every block). 60 tests pass (run_tests_round27.txt).
+  last four rewards are still held after block 9, audit exact every block). 60 tests pass (logs/run_tests_round27.txt).
 - Open: the 100 is a placeholder; a time-based wait (so that Yen's 100 blocks are not 25 hours and Jen's 4) may suit better.
 
 ## Round 28: the block log on disk (Justus L. Ludovic)
@@ -493,7 +493,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
 - Restart replays every record through full validation (the stamp check included) on the way in, as before, but streams the file instead of reading it whole.
 - Tests: store (CRC check value, records survive a reopen, the torn tail cut at every possible length and the append after the repair, damage in the middle,
   the lock), and a node test (old blocks leave memory and are served from disk by hash and by locator, restart gives the same tip and state root, a second node is refused,
-  a half-written block 10 is cut and can be added again). 66 tests pass (run_tests_round28.txt).
+  a half-written block 10 is cut and can be added again). 66 tests pass (logs/run_tests_round28.txt).
 - Open: a restart re-validates the whole chain, which is safe but takes time proportional to its length (a state snapshot with the tree root checked against the
   last block would fix it); the state and the tree are still wholly in memory; no compaction or pruning of old blocks on disk (a pruned node would not serve history).
 
@@ -508,7 +508,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
   (damaged, foreign, wrong name, not in the log, at odds with its block) is reported and the next older one is tried, then the whole log. `ZEN_REVALIDATE=1` ignores snapshots.
 - Tests: a chain restored from a snapshot has the same bytes, then goes on for 5 more blocks (rewards, retarget, S) identical to the original; 40 flipped bytes, a cut,
   another genesis and other parameters are all refused. A node test (window 3, snapshot every 2): files kept, restart from 8 with nothing older rebuilt, old blocks and the locator
-  still served, a restart after more blocks, a damaged newest snapshot (older used), a wrong-named one (passed over), none (whole log, same tip and root). 68 tests (run_tests_round29.txt).
+  still served, a restart after more blocks, a damaged newest snapshot (older used), a wrong-named one (passed over), none (whole log, same tip and root). 68 tests (logs/run_tests_round29.txt).
 - Open: the snapshot is trusted like the log (both are on the node's own disk; a snapshot checks against the block's state root, which covers the accounts but not
   the pool, the held rewards or S, those are covered by the supply audit and the file digest); writing it is done under the node's lock; the accounts are held in memory and
   the tree is rebuilt from them (32 hashes per account) on every start.
@@ -519,7 +519,7 @@ Block C's proof against block A's public values: rejected. Test engine: all thre
   on this machine. That is the whole cost (6.2 million x 23.7 us / 2 threads = 73 s, the rest FFTs).
 - Done: (1) ark-ff's assembly multiplication (`asm` feature + `.cargo/config.toml` with `+bmi2,+adx`; any x86-64 since Broadwell / Zen 1; on an older CPU the program would stop with an illegal instruction); (2) `permute_fast`: squarings, and every dot product reduced once (`Fr::sum_of_products`); the old `permute_ref` stays and a test checks
   they give the same states. 23.7 us -> 16.7 us per permutation. Same hashes, so the existing Groth16 setup and keys stay valid (checked: the node test with the old keys passes).
-- Measured with the real Groth16 node test (run_g16_node_round30.txt): BN254 layer 52 s (was 82 s); second block, key loaded: leaves/merges/shrink 11.0 s + BN254 52-53 s +
+- Measured with the real Groth16 node test (logs/run_g16_node_round30.txt): BN254 layer 52 s (was 82 s); second block, key loaded: leaves/merges/shrink 11.0 s + BN254 52-53 s +
   Groth16 79 s = 144 s (was 171 s). The first block took 285 s because the 2 GB key was read while the machine was swapping (8 GB RAM, Go prover ~6 GB).
 - Done: leaf and merge proofs run several at a time (`ProverMaker.par`, `ZEN_PAR_PROOFS`, default a quarter of the cores: 1 on this machine, 8 on 32 cores). Witnesses are still made in
   order (the signatures draw from one random stream), only the proofs run side by side; a level of the merge tree is independent merges. On 2 cores nothing changes
@@ -754,12 +754,12 @@ Tests: in `ordercirc` a reserved order is claimed in the last block of its reser
 ## Round 54 — proofs, step P6: Groth16 stamps carry operations (Justus L. Ludovic)
 
 Sixth step of the real proofs (`PROOFS-PLAN.md`). The merge (since P3) takes every leaf kind; P6 rebuilds what sits above it and proves the whole path with real operations.
-- **Shrink and BN254 layer rebuilt for the new merge.** The merge circuit now holds four operation keys, so its key, the shrink circuit over it and the BN254-Poseidon layer over that are new. Measured: leaves and merge 2^13 rows (state, channel, factory; vault and order about 2^11, padded to 2^13), shrink 2^13 (was 2^12), BN254 layer 2^12, 54.6 s to prove here (was about 82 s). Log: `run_export_v7.txt`, files in `out_v7/`.
-- **New Groth16 setup** for that layer: 4,203,150 constraints, 17 public values (16 block values plus gnark's commitment), proving key 2007 MB, verifying key 1008 bytes. Setup took 1008 s with a peak of 5966 MB (the machine needed a 10 GB swap file; the first try was killed for memory). Logs: `run_g16_setup_v7.txt`, `run_g16_setup_v7b.txt`. `out_v7/` here keeps the verifying key (`zen.vk`), the Solidity verifier and the circuit files; the proving key and R1CS (about 2 GB and more) stay out of the zip.
+- **Shrink and BN254 layer rebuilt for the new merge.** The merge circuit now holds four operation keys, so its key, the shrink circuit over it and the BN254-Poseidon layer over that are new. Measured: leaves and merge 2^13 rows (state, channel, factory; vault and order about 2^11, padded to 2^13), shrink 2^13 (was 2^12), BN254 layer 2^12, 54.6 s to prove here (was about 82 s). Log: `logs/run_export_v7.txt`, files in `proof-artifacts/out_v7/`.
+- **New Groth16 setup** for that layer: 4,203,150 constraints, 17 public values (16 block values plus gnark's commitment), proving key 2007 MB, verifying key 1008 bytes. Setup took 1008 s with a peak of 5966 MB (the machine needed a 10 GB swap file; the first try was killed for memory). Logs: `logs/run_g16_setup_v7.txt`, `logs/run_g16_setup_v7b.txt`. `proof-artifacts/out_v7/` here keeps the verifying key (`zen.vk`), the Solidity verifier and the circuit files; the proving key and R1CS (about 2 GB and more) stay out of the zip.
 - **`supports_ops()` is true in effect:** the Groth16 maker accepts every operation request (`accepts` is true since P5), so a pool with `ZEN_G16` stamps blocks with operations of all four families. The old gate, "the Groth16 stamp refuses ops", is gone.
-- Full suite: 132 passed, 1 failed (a fragile balance assertion in my own end-to-end test, fixed and re-run: passes), 2 ignored (`run_tests_round54.txt`). The older payment-only Groth16 node test also passes under the new key (`run_node_v7`: `run_g16_node_v7.txt`).
-- **Test** `groth16_stamps_carry_operations_of_every_family` (runs with `ZEN_G16=<dir with zen.pk, zen.r1cs, zen.vk>` and `ZEN_WRAP=<zenwrap>`): block 1 carries an order, a channel and a factory being made (three families in one block), block 2 a reservation and the start of a factory member's close; every stamp is 196 bytes, a node holding only `zen.vk` accepts it, a changed stamp byte is refused. Both blocks proved in 402 s all told on this 2 vCPU machine (log `run_g16_ops_v7.txt`).
-- **This setup is single-party** (one machine made it), fine for tests and a testnet, **not for real use**: whoever ran it could, in principle, have kept the secret randomness and forge stamps. A real launch needs a public multi-party ceremony for exactly this circuit (the same compile and setup steps, with many contributors); that cannot be done from this sandbox, so it stays a launch step. The old `zen.vk` of earlier rounds does not accept blocks of this circuit and must be replaced everywhere (`out_v6` is the old one).
+- Full suite: 132 passed, 1 failed (a fragile balance assertion in my own end-to-end test, fixed and re-run: passes), 2 ignored (`logs/run_tests_round54.txt`). The older payment-only Groth16 node test also passes under the new key (`run_node_v7`: `logs/run_g16_node_v7.txt`).
+- **Test** `groth16_stamps_carry_operations_of_every_family` (runs with `ZEN_G16=<dir with zen.pk, zen.r1cs, zen.vk>` and `ZEN_WRAP=<zenwrap>`): block 1 carries an order, a channel and a factory being made (three families in one block), block 2 a reservation and the start of a factory member's close; every stamp is 196 bytes, a node holding only `zen.vk` accepts it, a changed stamp byte is refused. Both blocks proved in 402 s all told on this 2 vCPU machine (log `logs/run_g16_ops_v7.txt`).
+- **This setup is single-party** (one machine made it), fine for tests and a testnet, **not for real use**: whoever ran it could, in principle, have kept the secret randomness and forge stamps. A real launch needs a public multi-party ceremony for exactly this circuit (the same compile and setup steps, with many contributors); that cannot be done from this sandbox, so it stays a launch step. The old `zen.vk` of earlier rounds does not accept blocks of this circuit and must be replaced everywhere (`proof-artifacts/out_v6` is the old one).
 
 ## Round 55 — proofs, step P7: soundness tests for the operation circuits (Justus L. Ludovic)
 
@@ -773,7 +773,7 @@ Seventh step of the real proofs (`PROOFS-PLAN.md`). The question: can a circuit 
   - The height scan is plus or minus 6 blocks, so a rule that breaks only far from its edge would not be seen; it is a probe, not a proof.
   - `ntime` and `CHAIN_ID` are constants in the test world, so a circuit that ignored them would not be caught.
   - Tampering is a set of chosen mutations, not an exhaustive search. A fuzzer over random mutations is a later item.
-- Full suite: 137 passed, 0 failed, 2 ignored (`run_tests_round55.txt`).
+- Full suite: 137 passed, 0 failed, 2 ignored (`logs/run_tests_round55.txt`).
 
 ## Round 56 — a wallet page in the browser (Justus L. Ludovic)
 - `zenproof wallet web <key file> [port]` (new `src/walletweb.rs`, page in `src/ui/wallet.html`): a small program for one key file that serves a page on `http://127.0.0.1:18470/` (default). The page shows the address, the balance on Yen, Ken and Jen (asks the three nodes on this computer over the p2p port; `ZEN_BASE_PORT` moves them), and sends a payment: chain, address, amount in grams (converted exactly to nanogram base units, no floats), fee 1% + 1. A payment is refused with a clear message when the node is down, the wallet has no account on that chain yet, or the balance does not cover amount plus fee.
