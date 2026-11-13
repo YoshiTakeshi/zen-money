@@ -26,23 +26,52 @@ pub const TABLE_LEN: usize = 1 << 16;
 
 /// one chain's metallic constants, all Q32.32
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Metal { pub log2r: i64, pub a: i64, pub inv_r: i64,
+pub struct Metal {
+    pub log2r: i64,
+    pub a: i64,
+    pub inv_r: i64,
     /// blocks 1..=fixed_v_blocks pay the curve with V = 1 (no draw): Yen's supply is finite and 90% of it is paid in its first 100 blocks
-    pub fixed_v_blocks: u64 }
-pub const YEN: Metal = Metal { log2r: YEN_LOG2R_Q32, a: YEN_A_Q32, inv_r: YEN_INV_R_Q32, fixed_v_blocks: 100 };
-pub const KEN: Metal = Metal { log2r: KEN_LOG2R_Q32, a: KEN_A_Q32, inv_r: KEN_INV_R_Q32, fixed_v_blocks: 0 };
-pub const JEN: Metal = Metal { log2r: JEN_LOG2R_Q32, a: JEN_A_Q32, inv_r: JEN_INV_R_Q32, fixed_v_blocks: 0 };
+    pub fixed_v_blocks: u64,
+}
+pub const YEN: Metal = Metal {
+    log2r: YEN_LOG2R_Q32,
+    a: YEN_A_Q32,
+    inv_r: YEN_INV_R_Q32,
+    fixed_v_blocks: 100,
+};
+pub const KEN: Metal = Metal {
+    log2r: KEN_LOG2R_Q32,
+    a: KEN_A_Q32,
+    inv_r: KEN_INV_R_Q32,
+    fixed_v_blocks: 0,
+};
+pub const JEN: Metal = Metal {
+    log2r: JEN_LOG2R_Q32,
+    a: JEN_A_Q32,
+    inv_r: JEN_INV_R_Q32,
+    fixed_v_blocks: 0,
+};
 impl Metal {
     /// chain 1 is Yen, 2 Ken, 3 Jen (anything else is treated as Jen)
-    pub fn of_chain(chain: u8) -> Metal { match chain { 1 => YEN, 2 => KEN, _ => JEN } }
+    pub fn of_chain(chain: u8) -> Metal {
+        match chain {
+            1 => YEN,
+            2 => KEN,
+            _ => JEN,
+        }
+    }
 }
 
 /// Z for table index `idx`, Q32.32
-pub fn phi_inv(idx: usize) -> i64 { i64::from_le_bytes(PHI_INV[8 * idx..8 * idx + 8].try_into().unwrap()) }
+pub fn phi_inv(idx: usize) -> i64 {
+    i64::from_le_bytes(PHI_INV[8 * idx..8 * idx + 8].try_into().unwrap())
+}
 
 /// the table index drawn from the seal hash of the NEXT block, so no miner sees or steers its own draw
 pub fn z_index(next_seal: &[u8; 32]) -> usize {
-    let mut h = Sha256::new(); h.update(next_seal); h.update(b"reward");
+    let mut h = Sha256::new();
+    h.update(next_seal);
+    h.update(b"reward");
     let d = h.finalize();
     (d[0] as usize) << 8 | d[1] as usize
 }
@@ -51,11 +80,18 @@ pub fn z_index(next_seal: &[u8; 32]) -> usize {
 pub fn log2_q32(n: u64) -> i64 {
     assert!(n > 0, "log2 of zero");
     let k = 63 - n.leading_zeros() as i64;
-    let mut m: u64 = if k <= 62 { n << (62 - k) } else { n >> (k - 62) };    // n / 2^k in [1, 2) as Q2.62
+    let mut m: u64 = if k <= 62 {
+        n << (62 - k)
+    } else {
+        n >> (k - 62)
+    }; // n / 2^k in [1, 2) as Q2.62
     let mut frac = 0i64;
     for i in 1..=32 {
-        m = ((m as u128 * m as u128) >> 62) as u64;                           // m^2 < 4 fits
-        if m >= 1 << 63 { frac |= 1 << (32 - i); m >>= 1; }
+        m = ((m as u128 * m as u128) >> 62) as u64; // m^2 < 4 fits
+        if m >= 1 << 63 {
+            frac |= 1 << (32 - i);
+            m >>= 1;
+        }
     }
     k << 32 | frac
 }
@@ -63,49 +99,82 @@ pub fn log2_q32(n: u64) -> i64 {
 /// 2^f in Q2.62 for a Q0.32 fraction f, as the product of 2^(2^-i) for the set bits
 fn exp2_frac_q62(f: u64) -> u64 {
     let mut acc = 1u64 << 62;
-    for i in 1..=32 { if f & (1 << (32 - i)) != 0 { acc = ((acc as u128 * EXP2_FRAC_Q62[i - 1] as u128) >> 62) as u64; } }
+    for i in 1..=32 {
+        if f & (1 << (32 - i)) != 0 {
+            acc = ((acc as u128 * EXP2_FRAC_Q62[i - 1] as u128) >> 62) as u64;
+        }
+    }
     acc
 }
 
 /// the reward of block `height` in picograms for a given Z (Q32.32); height 0 pays nothing
 pub fn reward_pico(m: Metal, height: u64, z_q32: i64) -> u64 {
-    if height == 0 { return 0; }
+    if height == 0 {
+        return 0;
+    }
     // E = Z log2 r - a log2 N in Q32.32, floored
     let e = ((z_q32 as i128 * m.log2r as i128) - (m.a as i128 * log2_q32(height) as i128)) >> 32;
     let e = e as i64;
-    let int_part = e >> 32;                                                   // floor(E)
-    let frac = e as u64 & 0xFFFF_FFFF;                                        // E - floor(E)
-    let mant = exp2_frac_q62(frac);                                           // 2^frac in Q2.62
-    let res = INITIAL_REWARD * PICO * mant as u128;                          // < 2^114
+    let int_part = e >> 32; // floor(E)
+    let frac = e as u64 & 0xFFFF_FFFF; // E - floor(E)
+    let mant = exp2_frac_q62(frac); // 2^frac in Q2.62
+    let res = INITIAL_REWARD * PICO * mant as u128; // < 2^114
     let shift = int_part - 62;
-    let res = if shift >= 0 { if shift > 13 { return u64::MAX; } res << shift } else { res >> (-shift).min(127) };
+    let res = if shift >= 0 {
+        if shift > 13 {
+            return u64::MAX;
+        }
+        res << shift
+    } else {
+        res >> (-shift).min(127)
+    };
     u64::try_from(res).unwrap_or(u64::MAX)
 }
 /// 2520 x N^(-a): the curve without the random factor
-pub fn raw_pico(m: Metal, height: u64) -> u64 { reward_pico(m, height, 0) }
+pub fn raw_pico(m: Metal, height: u64) -> u64 {
+    reward_pico(m, height, 0)
+}
 
 /// the miner's part: all of it when V <= 1, else Raw x V^(1/r) = Raw x r^(Z/r); the minters share the rest
-pub fn miner_part(m: Metal, height: u64, idx: usize) -> u64 { miner_part_z(m, height, phi_inv(idx)) }
+pub fn miner_part(m: Metal, height: u64, idx: usize) -> u64 {
+    miner_part_z(m, height, phi_inv(idx))
+}
 pub fn miner_part_z(m: Metal, height: u64, z: i64) -> u64 {
     let total = reward_pico(m, height, z);
-    if z <= 0 { return total; }
+    if z <= 0 {
+        return total;
+    }
     let zr = ((z as i128 * m.inv_r as i128) >> 32) as i64;
     reward_pico(m, height, zr).min(total)
 }
 
 /// who is owed what for block `height`, in base units (nanograms): the miner, then each of the minters' strikes, summing exactly
 /// to the reward; `next_seal` is the seal hash of block height + 1
-pub fn payouts(m: Metal, height: u64, next_seal: &[u8; 32], miner: [crate::F; 4], minters: &[[crate::F; 4]]) -> (u64, Vec<([crate::F; 4], u64)>) {
+pub fn payouts(
+    m: Metal,
+    height: u64,
+    next_seal: &[u8; 32],
+    miner: [crate::F; 4],
+    minters: &[[crate::F; 4]],
+) -> (u64, Vec<([crate::F; 4], u64)>) {
     // in the fixed-V blocks there is no draw: V = 1, the miner keeps all of the curve and the minters have no windfall to share
-    let z = if height <= m.fixed_v_blocks { 0 } else { phi_inv(z_index(next_seal)) };
+    let z = if height <= m.fixed_v_blocks {
+        0
+    } else {
+        phi_inv(z_index(next_seal))
+    };
     let total = reward_pico(m, height, z) / PICO_PER_UNIT;
-    if minters.is_empty() { return (total, vec![(miner, total)]); }
+    if minters.is_empty() {
+        return (total, vec![(miner, total)]);
+    }
     let mine = (miner_part_z(m, height, z) / PICO_PER_UNIT).min(total);
     let windfall = total - mine;
     let each = windfall / minters.len() as u64;
-    let rem = windfall - each * minters.len() as u64;                         // the remainder goes to the miner
+    let rem = windfall - each * minters.len() as u64; // the remainder goes to the miner
     let mut owed = vec![(miner, mine + rem)];
-    for a in minters { owed.push((*a, each)); }
+    for a in minters {
+        owed.push((*a, each));
+    }
     (total, owed)
 }
 
@@ -113,29 +182,48 @@ pub fn payouts(m: Metal, height: u64, next_seal: &[u8; 32], miner: [crate::F; 4]
 mod tests {
     use super::*;
     use sha2::Sha256;
-    fn f(x: i64) -> f64 { x as f64 / (1u64 << 32) as f64 }
+    fn f(x: i64) -> f64 {
+        x as f64 / (1u64 << 32) as f64
+    }
     #[test]
     fn the_table_is_the_published_one() {
         assert_eq!(PHI_INV.len(), 8 * TABLE_LEN);
         // the generator prints this hash (tools/gen_reward_tables.py); change nothing in the table without a new one
-        let h: String = Sha256::digest(PHI_INV).iter().map(|b| format!("{b:02x}")).collect();
+        let h: String = Sha256::digest(PHI_INV)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         assert_eq!(h, include_str!("phi_inv_q32.sha256").trim());
     }
     #[test]
     fn the_table_is_a_normal_quantile_function() {
         let z: Vec<i64> = (0..TABLE_LEN).map(phi_inv).collect();
         assert!(z.windows(2).all(|w| w[0] < w[1]), "strictly increasing");
-        for k in 0..TABLE_LEN / 2 { assert_eq!(z[k], -z[TABLE_LEN - 1 - k], "antisymmetric at {k}"); }
+        for k in 0..TABLE_LEN / 2 {
+            assert_eq!(z[k], -z[TABLE_LEN - 1 - k], "antisymmetric at {k}");
+        }
         // known values: the median, one and two standard deviations, the extremes
         assert!(f(z[TABLE_LEN / 2]).abs() < 1e-4);
         let at = |p: f64| f(z[(p * TABLE_LEN as f64) as usize]);
-        assert!((at(0.8413447460685429) - 1.0).abs() < 1e-3, "{}", at(0.8413447460685429));
+        assert!(
+            (at(0.8413447460685429) - 1.0).abs() < 1e-3,
+            "{}",
+            at(0.8413447460685429)
+        );
         assert!((at(0.9772498680518208) - 2.0).abs() < 2e-3);
-        assert!((f(z[0]) + 4.4).abs() < 0.1 && (f(z[TABLE_LEN - 1]) - 4.4).abs() < 0.1, "tails {} {}", f(z[0]), f(z[TABLE_LEN - 1]));
+        assert!(
+            (f(z[0]) + 4.4).abs() < 0.1 && (f(z[TABLE_LEN - 1]) - 4.4).abs() < 0.1,
+            "tails {} {}",
+            f(z[0]),
+            f(z[TABLE_LEN - 1])
+        );
         // mean 0 and variance 1 over the table
         let mean: f64 = z.iter().map(|x| f(*x)).sum::<f64>() / TABLE_LEN as f64;
         let var: f64 = z.iter().map(|x| f(*x).powi(2)).sum::<f64>() / TABLE_LEN as f64;
-        assert!(mean.abs() < 1e-9 && (var - 1.0).abs() < 1e-3, "mean {mean} var {var}");
+        assert!(
+            mean.abs() < 1e-9 && (var - 1.0).abs() < 1e-3,
+            "mean {mean} var {var}"
+        );
     }
     #[test]
     fn log2_and_the_raw_curve_match_floating_point() {
@@ -150,7 +238,10 @@ mod tests {
             for n in [2u64, 100, 10_000, 1_000_000] {
                 let want = 2520e12 * (n as f64).powf(-a);
                 let got = raw_pico(m, n) as f64;
-                assert!((got / want - 1.0).abs() < 1e-6, "{name} block {n}: {got} vs {want}");
+                assert!(
+                    (got / want - 1.0).abs() < 1e-6,
+                    "{name} block {n}: {got} vs {want}"
+                );
             }
         }
         assert_eq!(raw_pico(JEN, 0), 0);
@@ -160,10 +251,17 @@ mod tests {
         // 400 (height, Z) pairs run through the Jen-0 Go implementation (reward.go, its own big-integer arithmetic)
         let mut n = 0;
         for line in include_str!("reward_reference_jen.txt").lines() {
-            let v: Vec<u64> = line.split_whitespace().map(|x| x.parse::<i64>().unwrap() as u64).collect();
+            let v: Vec<u64> = line
+                .split_whitespace()
+                .map(|x| x.parse::<i64>().unwrap() as u64)
+                .collect();
             let (h, z) = (v[0], v[1] as i64);
             assert_eq!(reward_pico(JEN, h, z), v[2], "reward at height {h}, z {z}");
-            assert_eq!(miner_part_z(JEN, h, z), v[3], "miner part at height {h}, z {z}");
+            assert_eq!(
+                miner_part_z(JEN, h, z),
+                v[3],
+                "miner part at height {h}, z {z}"
+            );
             n += 1;
         }
         assert_eq!(n, 400);
@@ -176,7 +274,10 @@ mod tests {
                 let n = 5_000u64;
                 let want = raw_pico(m, n) as f64 * r.powf(f(phi_inv(idx)));
                 let got = reward_pico(m, n, phi_inv(idx)) as f64;
-                assert!((got / want - 1.0).abs() < 1e-6, "{name} idx {idx}: {got} vs {want}");
+                assert!(
+                    (got / want - 1.0).abs() < 1e-6,
+                    "{name} idx {idx}: {got} vs {want}"
+                );
             }
         }
     }
@@ -184,24 +285,40 @@ mod tests {
     fn averages_and_the_split_match_the_spec() {
         // arithmetic average of V over the table: about 1.12 (Yen), 1.47 (Ken), 2.04 (Jen); geometric average 1
         for (m, avg) in [(YEN, 1.12), (KEN, 1.47), (JEN, 2.04)] {
-            let n = 1_000u64; let raw = raw_pico(m, n) as f64;
-            let mean: f64 = (0..TABLE_LEN).map(|k| reward_pico(m, n, phi_inv(k)) as f64 / raw).sum::<f64>() / TABLE_LEN as f64;
+            let n = 1_000u64;
+            let raw = raw_pico(m, n) as f64;
+            let mean: f64 = (0..TABLE_LEN)
+                .map(|k| reward_pico(m, n, phi_inv(k)) as f64 / raw)
+                .sum::<f64>()
+                / TABLE_LEN as f64;
             assert!((mean - avg).abs() < 0.03, "mean V {mean} vs {avg}");
-            let lg: f64 = (0..TABLE_LEN).map(|k| (reward_pico(m, n, phi_inv(k)) as f64 / raw).ln()).sum::<f64>() / TABLE_LEN as f64;
+            let lg: f64 = (0..TABLE_LEN)
+                .map(|k| (reward_pico(m, n, phi_inv(k)) as f64 / raw).ln())
+                .sum::<f64>()
+                / TABLE_LEN as f64;
             assert!(lg.abs() < 1e-4, "geometric mean {lg}");
         }
         // the miner keeps about 89% / 65% / 45% of the average reward on Yen / Ken / Jen, and never less than the raw curve's worth when V <= 1
         for (m, keeps) in [(YEN, 0.89), (KEN, 0.65), (JEN, 0.45)] {
             let n = 1_000u64;
             let (mut mine, mut all) = (0f64, 0f64);
-            for k in 0..TABLE_LEN { mine += miner_part(m, n, k) as f64; all += reward_pico(m, n, phi_inv(k)) as f64; }
+            for k in 0..TABLE_LEN {
+                mine += miner_part(m, n, k) as f64;
+                all += reward_pico(m, n, phi_inv(k)) as f64;
+            }
             // as a share of the average reward
             let share = mine / all;
-            assert!((share - keeps).abs() < 0.04, "miner share {share} vs {keeps}");
+            assert!(
+                (share - keeps).abs() < 0.04,
+                "miner share {share} vs {keeps}"
+            );
         }
         // a block with V <= 1 pays the miner everything; one with V > 1 splits the windfall
-        for k in [0usize, 100, 30_000, 32_767] { assert_eq!(miner_part(JEN, 77, k), reward_pico(JEN, 77, phi_inv(k))); }
-        let k = 65_000; assert!(miner_part(JEN, 77, k) < reward_pico(JEN, 77, phi_inv(k)));
+        for k in [0usize, 100, 30_000, 32_767] {
+            assert_eq!(miner_part(JEN, 77, k), reward_pico(JEN, 77, phi_inv(k)));
+        }
+        let k = 65_000;
+        assert!(miner_part(JEN, 77, k) < reward_pico(JEN, 77, phi_inv(k)));
     }
     #[test]
     fn yens_first_hundred_blocks_have_no_random_factor() {
@@ -213,32 +330,74 @@ mod tests {
             for s in 0..200u32 {
                 let seal: [u8; 32] = Sha256::digest(s.to_le_bytes()).into();
                 let (total, owed) = payouts(YEN, h, &seal, a(1), &minters);
-                assert_eq!((total, owed.clone()), (first.0, first.1.clone()), "the seal changes nothing at Yen block {h}");
+                assert_eq!(
+                    (total, owed.clone()),
+                    (first.0, first.1.clone()),
+                    "the seal changes nothing at Yen block {h}"
+                );
                 assert_eq!(total, raw_pico(YEN, h) / PICO_PER_UNIT, "the curve exactly");
                 assert_eq!(owed[0].1, total, "the miner has all of it");
-                assert!(owed[1..].iter().all(|(_, v)| *v == 0), "no windfall for the minters");
+                assert!(
+                    owed[1..].iter().all(|(_, v)| *v == 0),
+                    "no windfall for the minters"
+                );
             }
         }
-        assert_eq!(payouts(YEN, 1, &[7u8; 32], a(1), &minters).0, 2520 * UNITS_PER_GRAM);
+        assert_eq!(
+            payouts(YEN, 1, &[7u8; 32], a(1), &minters).0,
+            2520 * UNITS_PER_GRAM
+        );
         // from block 101 the draw is back, and Ken and Jen draw from block 1
         for (m, h) in [(YEN, 101u64), (KEN, 1), (JEN, 1), (JEN, 100)] {
-            let totals: std::collections::HashSet<u64> = (0..200u32).map(|s| payouts(m, h, &Sha256::digest(s.to_le_bytes()).into(), a(1), &minters).0).collect();
-            assert!(totals.len() > 100, "the draw varies at block {h}: {} different rewards", totals.len());
+            let totals: std::collections::HashSet<u64> = (0..200u32)
+                .map(|s| {
+                    payouts(
+                        m,
+                        h,
+                        &Sha256::digest(s.to_le_bytes()).into(),
+                        a(1),
+                        &minters,
+                    )
+                    .0
+                })
+                .collect();
+            assert!(
+                totals.len() > 100,
+                "the draw varies at block {h}: {} different rewards",
+                totals.len()
+            );
         }
     }
     #[test]
     fn payouts_add_up_exactly() {
         use plonky2::field::types::Field;
         let a = |i: u64| [crate::F::from_canonical_u64(i); 4];
-        for (m, h) in [(YEN, 3u64), (YEN, 101), (YEN, 5_000), (KEN, 999), (JEN, 123_456)] {
+        for (m, h) in [
+            (YEN, 3u64),
+            (YEN, 101),
+            (YEN, 5_000),
+            (KEN, 999),
+            (JEN, 123_456),
+        ] {
             for s in 0..300u32 {
                 let seal: [u8; 32] = Sha256::digest(s.to_le_bytes()).into();
                 for n_minters in [0usize, 1, 7, 24] {
-                    let minters: Vec<[crate::F; 4]> = (0..n_minters).map(|i| a(10 + i as u64)).collect();
+                    let minters: Vec<[crate::F; 4]> =
+                        (0..n_minters).map(|i| a(10 + i as u64)).collect();
                     let (total, owed) = payouts(m, h, &seal, a(1), &minters);
-                    assert_eq!(owed.iter().map(|(_, v)| *v).sum::<u64>(), total, "the payouts add up to the reward");
+                    assert_eq!(
+                        owed.iter().map(|(_, v)| *v).sum::<u64>(),
+                        total,
+                        "the payouts add up to the reward"
+                    );
                     assert_eq!(owed.len(), if n_minters == 0 { 1 } else { 1 + n_minters });
-                    if n_minters > 0 { let each = owed[1].1; assert!(owed[1..].iter().all(|(_, v)| *v == each), "minters share equally"); }
+                    if n_minters > 0 {
+                        let each = owed[1].1;
+                        assert!(
+                            owed[1..].iter().all(|(_, v)| *v == each),
+                            "minters share equally"
+                        );
+                    }
                 }
             }
         }
@@ -247,23 +406,44 @@ mod tests {
     fn nanograms_keep_every_balance_in_range_for_ten_thousand_years() {
         // balances must stay below 2^62 base units; Jen is the chain that grows forever fastest
         let lim = (1u128 << 62) as f64;
-        let ten_years: u128 = (1..=576u64 * 365 * 10).map(|n| (raw_pico(JEN, n) / PICO_PER_UNIT) as u128).sum();
-        assert!((ten_years as f64 / (2_706_000.0 * UNITS_PER_GRAM as f64) - 1.0).abs() < 0.02, "ten years of Jen: {ten_years}");
+        let ten_years: u128 = (1..=576u64 * 365 * 10)
+            .map(|n| (raw_pico(JEN, n) / PICO_PER_UNIT) as u128)
+            .sum();
+        assert!(
+            (ten_years as f64 / (2_706_000.0 * UNITS_PER_GRAM as f64) - 1.0).abs() < 0.02,
+            "ten years of Jen: {ten_years}"
+        );
         // with the average random factor of 2.04, and the supply growing like N^(1 - a) beyond that
         let a = f(JEN.a);
         let at_10k_years = ten_years as f64 * 2.04 * 1000f64.powf(1.0 - a);
-        println!("Jen after 10,000 years: {:.2e} base units = {:.3} of 2^62 (in picograms it would be {:.1} of 2^62)", at_10k_years, at_10k_years / lim, at_10k_years * 1000.0 / lim);
+        println!(
+            "Jen after 10,000 years: {:.2e} base units = {:.3} of 2^62 (in picograms it would be {:.1} of 2^62)",
+            at_10k_years,
+            at_10k_years / lim,
+            at_10k_years * 1000.0 / lim
+        );
         assert!(at_10k_years < lim / 30.0, "margin {}", lim / at_10k_years);
-        assert!(ten_years as f64 * 2.04 * 1000.0 > lim, "in picograms the same supply would be past 2^62 within ten years");
+        assert!(
+            ten_years as f64 * 2.04 * 1000.0 > lim,
+            "in picograms the same supply would be past 2^62 within ten years"
+        );
         // the largest single reward there can be: the top of the table at block 1, in every chain
-        for m in [YEN, KEN, JEN] { assert!(reward_pico(m, 1, phi_inv(TABLE_LEN - 1)) / PICO_PER_UNIT < (1 << 62) / 1000); }
+        for m in [YEN, KEN, JEN] {
+            assert!(reward_pico(m, 1, phi_inv(TABLE_LEN - 1)) / PICO_PER_UNIT < (1 << 62) / 1000);
+        }
         // one Sen (2 g) is 2 x 10^9 base units: the smallest fee (0.01 coin) and payment (1/6 coin) have room for a fee rate of 0.01%
-        let sen = 2 * UNITS_PER_GRAM; assert!(sen / 6 / 10_000 >= 30_000, "fee granularity at the smallest payment");
+        let sen = 2 * UNITS_PER_GRAM;
+        assert!(
+            sen / 6 / 10_000 >= 30_000,
+            "fee granularity at the smallest payment"
+        );
     }
     #[test]
     fn supply_after_a_year_matches_the_table() {
         // SPEC 5.5: with V = 1 and 96 / 288 / 576 blocks a day
-        let sum = |m: Metal, blocks: u64| (1..=blocks).map(|n| raw_pico(m, n) as u128).sum::<u128>() / PICO;
+        let sum = |m: Metal, blocks: u64| {
+            (1..=blocks).map(|n| raw_pico(m, n) as u128).sum::<u128>() / PICO
+        };
         let (y, k, j) = (sum(YEN, 96 * 365), sum(KEN, 288 * 365), sum(JEN, 576 * 365));
         println!("one year of raw rewards: yen {y} ken {k} jen {j} g");
         assert!((y as f64 / 7198.0 - 1.0).abs() < 0.01, "yen {y}");
